@@ -40,6 +40,18 @@ shows a warning banner with a download link if `zhao` isn't found.
 | `zhao.autoRefreshOnSave` | `false` | Re-compile and refresh automatically on save. |
 | `zhao.executablePath` | `"zhao"` | Path to the `zhao-cli` executable. |
 
+## Development
+
+- `npm run typecheck` / `npm test` / `npm run build` -- the usual trio; `npm test` runs the pure
+  lineage-graph-engine/plumbing unit tests, plus (when a `zhao-cli` checkout with a release build
+  is available as a sibling repo, or `$ZHAO_BIN` is set) a real end-to-end test against the actual
+  `zhao` binary.
+- `npm run smoke` -- loads the real, esbuild-bundled `dist/extension.cjs` (exactly what VS Code's
+  extension host `require()`s) against a fake `vscode` module and asserts `activate()` runs
+  without throwing and registers every command/view `package.json` declares. Not a substitute for
+  running inside a real VS Code Extension Development Host (`F5` from this repo) -- that's still
+  the way to verify the webview UI itself.
+
 ## How this compares to the official dbt extension
 
 The official dbt VS Code extension's lineage view requires a paid dbt Cloud connection and shows

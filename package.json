@@ -3,6 +3,7 @@
   "displayName": "zhao: dbt Lineage",
   "description": "Depth-scoped, diff-aware dbt lineage in your editor -- a companion to zhao-cli, offline and free.",
   "version": "0.1.0",
+  "type": "module",
   "publisher": "allenhori",
   "license": "Apache-2.0",
   "repository": {
@@ -19,7 +20,7 @@
   "activationEvents": [
     "workspaceContains:**/dbt_project.yml"
   ],
-  "main": "./dist/extension.js",
+  "main": "./dist/extension.cjs",
   "contributes": {
     "commands": [
       {
@@ -116,11 +117,12 @@
     }
   },
   "scripts": {
-    "build": "tsc -p . && node esbuild.mjs",
+    "build": "tsc --noEmit -p . && node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit -p .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "smoke": "node test/activationSmoke.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
