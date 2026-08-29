@@ -1,0 +1,135 @@
+{
+  "name": "zhao-vscode-ext",
+  "displayName": "zhao: dbt Lineage",
+  "description": "Depth-scoped, diff-aware dbt lineage in your editor -- a companion to zhao-cli, offline and free.",
+  "version": "0.1.0",
+  "publisher": "allenhori",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/allenhori/zhao-vscode-ext.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:**/dbt_project.yml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "zhao.refreshLineage",
+        "title": "zhao: Refresh Lineage",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "zhao.popOutLineage",
+        "title": "zhao: Pop Out Lineage to Editor Tab",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "zhao.downloadCli",
+        "title": "zhao: Download zhao-cli"
+      }
+    ],
+    "views": {
+      "zhao-panel": [
+        {
+          "type": "webview",
+          "id": "zhao.lineageView",
+          "name": "Lineage"
+        }
+      ],
+      "zhao-sidebar": [
+        {
+          "type": "webview",
+          "id": "zhao.settingsView",
+          "name": "zhao Settings"
+        }
+      ]
+    },
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "zhao-panel",
+          "title": "zhao Lineage",
+          "icon": "$(git-branch)"
+        }
+      ],
+      "activitybar": [
+        {
+          "id": "zhao-sidebar",
+          "title": "zhao",
+          "icon": "$(git-branch)"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "zhao.refreshLineage",
+          "when": "view == zhao.lineageView",
+          "group": "navigation"
+        },
+        {
+          "command": "zhao.popOutLineage",
+          "when": "view == zhao.lineageView",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "zhao",
+      "properties": {
+        "zhao.autoRefreshOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically re-run 'zhao lineage --compile' and refresh the lineage panel whenever a SQL file is saved. Off by default -- a compile can be slow and, depending on your adapter, warehouse-touching."
+        },
+        "zhao.depth": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "description": "Default number of upstream/downstream hops shown from the current model."
+        },
+        "zhao.direction": {
+          "type": "string",
+          "enum": [
+            "upstream",
+            "downstream",
+            "both"
+          ],
+          "default": "both",
+          "description": "Default direction shown from the current model."
+        },
+        "zhao.executablePath": {
+          "type": "string",
+          "default": "zhao",
+          "description": "Path to the zhao-cli executable. Defaults to 'zhao', resolved via PATH."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p . && node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0"
+  }
+}
