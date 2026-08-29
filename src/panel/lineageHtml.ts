@@ -25,6 +25,12 @@ export interface LineageWebviewState {
   direction: "upstream" | "downstream" | "both";
   columnLevel: boolean;
   diffHighlight: boolean;
+  /** A ready-to-run command rebuilding the diff-highlight overlay's
+   * impacted models, straight from zhao-cli's own `recommended_command`
+   * -- `null` whenever there's no diff data, or zhao-cli didn't
+   * generate one (no `recommended-command.subcommand` configured, or
+   * nothing impacted). Drives the Copy/Run buttons' visibility. */
+  recommendedCommand: string | null;
   /** Set when `zhao` isn't on PATH -- renders the warning banner instead
    * of (or above) the graph. */
   missingExecutable: boolean;
@@ -60,6 +66,8 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   .controls label { display: flex; gap: 4px; align-items: center; font-size: 12px; }
   .banner { background: var(--vscode-inputValidation-warningBackground); border: 1px solid var(--vscode-inputValidation-warningBorder); padding: 8px; margin-bottom: 8px; }
   .error { background: var(--vscode-inputValidation-errorBackground); border: 1px solid var(--vscode-inputValidation-errorBorder); padding: 8px; margin-bottom: 8px; }
+  .recommended-command { display: flex; gap: 8px; align-items: center; background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-panel-border); padding: 6px 8px; margin-bottom: 8px; font-size: 12px; }
+  .recommended-command code { flex: 1; overflow-x: auto; white-space: pre; font-family: var(--vscode-editor-font-family); }
   #graph { overflow: auto; border: 1px solid var(--vscode-panel-border); }
   .node-box { fill: var(--vscode-editorWidget-background); stroke: var(--vscode-panel-border); }
   .node-box.origin { stroke-dasharray: 3,2; }
@@ -75,6 +83,11 @@ export function renderLineageHtml(state: LineageWebviewState): string {
 <body>
   ${state.missingExecutable ? `<div class="banner">zhao-cli was not found on PATH. <button id="download">Download zhao-cli</button></div>` : ""}
   ${state.error ? `<div class="error">${escapeHtml(state.error)}</div>` : ""}
+  ${
+    state.recommendedCommand
+      ? `<div class="recommended-command"><code>${escapeHtml(state.recommendedCommand)}</code><button id="copyCommand">Copy</button><button id="runCommand">Run in Terminal</button></div>`
+      : ""
+  }
   <div class="controls">
     <button id="refresh">Refresh Lineage</button>
     <button id="popOut">Pop Out</button>
@@ -98,6 +111,8 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   document.getElementById("refresh")?.addEventListener("click", () => vscode.postMessage({ type: "refresh" }));
   document.getElementById("popOut")?.addEventListener("click", () => vscode.postMessage({ type: "popOut" }));
   document.getElementById("download")?.addEventListener("click", () => vscode.postMessage({ type: "downloadCli" }));
+  document.getElementById("copyCommand")?.addEventListener("click", () => vscode.postMessage({ type: "copyCommand" }));
+  document.getElementById("runCommand")?.addEventListener("click", () => vscode.postMessage({ type: "runCommand" }));
   document.getElementById("depth")?.addEventListener("change", (e) =>
     vscode.postMessage({ type: "setDepth", depth: Number(e.target.value) }));
   document.getElementById("focus")?.addEventListener("change", (e) =>

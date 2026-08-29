@@ -18,6 +18,12 @@ a terminal.
 - **Diff highlighting**: see which models were actually changed on your current branch, and
   which downstream models are genuinely reached by that change -- the same data `zhao check`/
   `zhao diff` already compute in CI, now visible before you even open a PR.
+- **Recommended command**: with diff highlighting on and `zhao.yml`'s
+  [`recommended-command.subcommand`](https://github.com/allenhori/zhao-cli/blob/master/docs/configuration.md#recommended-command)
+  set, a ready-to-run command rebuilding exactly the impacted models appears in the panel --
+  **Copy** it, or **Run in Terminal** to have it typed into your integrated terminal (using your
+  real shell, aliases and all) without being executed for you. zhao-cli computes the command;
+  the extension never does, and nothing runs without you pressing Enter yourself.
 - **Settings sidebar**: which dbt project is active (auto-detected in a monorepo, always
   overridable) and which profile target `zhao` compiles against, remembered per workspace.
 - **Isolated compiles**: every compile this extension triggers writes to a temp directory, never

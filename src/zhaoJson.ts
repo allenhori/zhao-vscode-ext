@@ -36,12 +36,19 @@ interface RawGraphEdge {
   downstream_column?: string;
 }
 
-/** `target/zhao/run-metadata.json`'s actual shape -- only the two
- * fields the diff-highlight overlay needs; every other field
- * (`findings`, `staleness_warning`, `defer`, ...) is ignored here. */
+/** `target/zhao/run-metadata.json`'s actual shape -- only the fields
+ * the diff-highlight overlay and the recommended-command display need;
+ * every other field (`findings`, `staleness_warning`, `defer_plan`,
+ * ...) is ignored here. */
 export interface RawRunMetadataJson {
   changes: RawChange[];
   impacted_models: string[];
+  /** Present only when `zhao.yml`'s `recommended-command.subcommand` is
+   * configured and something was impacted -- see
+   * `Report::with_recommended_command`. zhao-cli deliberately never
+   * assembles this on its own otherwise, so its absence here isn't a
+   * missing feature, it's the documented "not configured" state. */
+  recommended_command?: string;
 }
 
 interface RawChange {
@@ -84,12 +91,22 @@ export function parseFullLineageJson(raw: RawFullLineageJson): ParsedFullLineage
   };
 }
 
+export interface ParsedRunMetadata {
+  runMetadata: RunMetadataJson;
+  /** `null` when zhao-cli didn't generate one (no `recommended-command`
+   * config, or nothing was impacted) -- see `RawRunMetadataJson.recommended_command`. */
+  recommendedCommand: string | null;
+}
+
 /** The changed-node set is every distinct `node` a Change touched;
  * `impacted_models` is already exactly the reached-node set
  * `zhao check`/`zhao diff` compute -- see `Report::with_impacted_models`. */
-export function parseRunMetadataJson(raw: RawRunMetadataJson): RunMetadataJson {
+export function parseRunMetadataJson(raw: RawRunMetadataJson): ParsedRunMetadata {
   return {
-    changedNodeIds: [...new Set(raw.changes.map((c) => c.node))],
-    reachedNodeIds: raw.impacted_models,
+    runMetadata: {
+      changedNodeIds: [...new Set(raw.changes.map((c) => c.node))],
+      reachedNodeIds: raw.impacted_models,
+    },
+    recommendedCommand: raw.recommended_command ?? null,
   };
 }

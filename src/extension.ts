@@ -63,6 +63,10 @@ export function activate(context: vscode.ExtensionContext): void {
           void controller.refresh(true);
         } else if (msg.type === "downloadCli") {
           void vscode.env.openExternal(vscode.Uri.parse(RELEASES_URL));
+        } else if (msg.type === "copyCommand") {
+          void controller.copyRecommendedCommand();
+        } else if (msg.type === "runCommand") {
+          controller.runRecommendedCommandInTerminal();
         }
       });
     }),

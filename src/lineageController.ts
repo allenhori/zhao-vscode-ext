@@ -27,6 +27,15 @@ const WORKSPACE_STATE_TARGET_KEY = "zhao.activeTarget";
 export class LineageController implements vscode.Disposable {
   private fullLineage: FullLineageJson | null = null;
   private runMetadata: RunMetadataJson | null = null;
+  /** A ready-to-run command rebuilding exactly the diff-highlight
+   * overlay's impacted models, from zhao-cli's own
+   * `recommended_command` -- `null` whenever `runMetadata` is (no diff
+   * data at all) or zhao-cli didn't generate one (no
+   * `recommended-command.subcommand` configured, or nothing impacted).
+   * The extension never constructs this itself -- see
+   * `Report::with_recommended_command`. */
+  private recommendedCommand: string | null = null;
+  private terminal: vscode.Terminal | null = null;
   private nodeTerm = "model";
   private originTerm = "source";
   private focus: string | null = null;
@@ -67,6 +76,7 @@ export class LineageController implements vscode.Disposable {
     await this.context.workspaceState.update(WORKSPACE_STATE_PROJECT_KEY, dir);
     this.fullLineage = null;
     this.runMetadata = null;
+    this.recommendedCommand = null;
     this.focus = null;
     this.error = null;
     this.lastTargetPathDir = null;
@@ -151,7 +161,17 @@ export class LineageController implements vscode.Disposable {
   }
   async setDiffHighlight(value: boolean): Promise<void> {
     this.diffHighlight = value;
-    if (value && !this.runMetadata) {
+    if (!value) {
+      // The recommended-command bar isn't itself gated on diffHighlight
+      // in the webview (it's meaningful on its own) -- clear it
+      // explicitly so turning diff-highlight off doesn't leave a stale
+      // command from the last time it was on still showing.
+      this.runMetadata = null;
+      this.recommendedCommand = null;
+      this.changeEmitter.fire();
+      return;
+    }
+    if (!this.runMetadata) {
       await this.refresh(false);
       return;
     }
@@ -169,6 +189,12 @@ export class LineageController implements vscode.Disposable {
    * this session. */
   async refresh(compile: boolean): Promise<void> {
     if (this.refreshing) {
+      // A caller (e.g. setDiffHighlight) may have already applied its
+      // own state change before calling refresh() -- still notify the
+      // webview of that, even though this particular refresh is a
+      // no-op; the in-flight refresh's own completion will fire again
+      // once it finishes.
+      this.changeEmitter.fire();
       return;
     }
     const projectDir = this.activeProjectDir;
@@ -230,15 +256,19 @@ export class LineageController implements vscode.Disposable {
         const diffResult = await runZhao(executable, diffArgs);
         try {
           const rawMetadata = JSON.parse(diffResult.stdout) as RawRunMetadataJson;
-          this.runMetadata = parseRunMetadataJson(rawMetadata);
+          const parsed = parseRunMetadataJson(rawMetadata);
+          this.runMetadata = parsed.runMetadata;
+          this.recommendedCommand = parsed.recommendedCommand;
         } catch {
           // `zhao diff` failing (e.g. no resolvable Baseline yet) just
           // means no diff overlay this round -- not a fatal error for
           // the lineage view itself.
           this.runMetadata = null;
+          this.recommendedCommand = null;
         }
       } else {
         this.runMetadata = null;
+        this.recommendedCommand = null;
       }
     } catch (err) {
       this.error = err instanceof Error ? err.message : String(err);
@@ -271,9 +301,34 @@ export class LineageController implements vscode.Disposable {
       direction: this.direction,
       columnLevel: this.columnLevel,
       diffHighlight: this.diffHighlight,
+      recommendedCommand: this.recommendedCommand,
       missingExecutable: this.executablePath === null,
       error: this.error,
     };
+  }
+
+  /** Copies `recommendedCommand` to the clipboard -- a no-op if there
+   * isn't one (the panel only shows the button when there is). */
+  async copyRecommendedCommand(): Promise<void> {
+    if (this.recommendedCommand) {
+      await vscode.env.clipboard.writeText(this.recommendedCommand);
+    }
+  }
+
+  /** Types `recommendedCommand` into a reused (or freshly created)
+   * integrated terminal and shows it -- deliberately does *not* press
+   * Enter (`sendText`'s second argument is `false`): the user reviews
+   * the command in their own real shell (aliases/direnv/venv intact)
+   * and runs it themselves. No-op if there isn't one. */
+  runRecommendedCommandInTerminal(): void {
+    if (!this.recommendedCommand) {
+      return;
+    }
+    if (!this.terminal || this.terminal.exitStatus !== undefined) {
+      this.terminal = vscode.window.createTerminal("zhao");
+    }
+    this.terminal.show();
+    this.terminal.sendText(this.recommendedCommand, false);
   }
 
   async getSettingsWebviewState(): Promise<SettingsWebviewState> {

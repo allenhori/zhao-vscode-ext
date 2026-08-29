@@ -60,6 +60,12 @@ export class LineageViewProvider implements vscode.WebviewViewProvider {
       case "setDiffHighlight":
         void this.controller.setDiffHighlight(Boolean(msg.value));
         return;
+      case "copyCommand":
+        void this.controller.copyRecommendedCommand();
+        return;
+      case "runCommand":
+        this.controller.runRecommendedCommandInTerminal();
+        return;
       default:
         return;
     }

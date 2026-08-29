@@ -66,7 +66,7 @@ describe("parseRunMetadataJson", () => {
       impacted_models: ["model.dim_customers"],
     };
     const parsed = parseRunMetadataJson(raw);
-    expect(parsed.changedNodeIds.sort()).toEqual(["model.fct_orders", "model.stg_orders"]);
+    expect(parsed.runMetadata.changedNodeIds.sort()).toEqual(["model.fct_orders", "model.stg_orders"]);
   });
 
   it("passes impacted_models through as reachedNodeIds unchanged", () => {
@@ -74,9 +74,23 @@ describe("parseRunMetadataJson", () => {
       changes: [],
       impacted_models: ["model.dim_customers", "model.fct_orders"],
     };
-    expect(parseRunMetadataJson(raw).reachedNodeIds).toEqual([
+    expect(parseRunMetadataJson(raw).runMetadata.reachedNodeIds).toEqual([
       "model.dim_customers",
       "model.fct_orders",
     ]);
+  });
+
+  it("carries recommended_command through as recommendedCommand when present", () => {
+    const raw: RawRunMetadataJson = {
+      changes: [],
+      impacted_models: ["model.dim_customers"],
+      recommended_command: "dbt run --select dim_customers",
+    };
+    expect(parseRunMetadataJson(raw).recommendedCommand).toBe("dbt run --select dim_customers");
+  });
+
+  it("is null when zhao-cli didn't generate one", () => {
+    const raw: RawRunMetadataJson = { changes: [], impacted_models: [] };
+    expect(parseRunMetadataJson(raw).recommendedCommand).toBeNull();
   });
 });
