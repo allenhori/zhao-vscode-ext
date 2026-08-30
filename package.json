@@ -6,6 +6,7 @@
   "type": "module",
   "publisher": "allenhori",
   "license": "Apache-2.0",
+  "icon": "images/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/allenhori/zhao-vscode-ext.git"
@@ -59,14 +60,14 @@
         {
           "id": "zhao-panel",
           "title": "zhao Lineage",
-          "icon": "$(git-branch)"
+          "icon": "images/activity-bar-icon.png"
         }
       ],
       "activitybar": [
         {
           "id": "zhao-sidebar",
           "title": "zhao",
-          "icon": "$(git-branch)"
+          "icon": "images/activity-bar-icon.png"
         }
       ]
     },

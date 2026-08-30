@@ -62,10 +62,12 @@ export function buildRenderableGraph(
 }
 
 /**
- * Resolves which Node/Origin ids are visible and how far each is from
- * `config.focus`, in hops. `null` focus means "everything" -- every node
- * in `fullLineage` is visible, each with a `null` depth (there's no
- * single center to measure from). A non-null focus not present in
+ * Resolves which Node/Origin ids are visible and their horizontal
+ * layout position: hops from `config.focus` when one is given, or (when
+ * `focus` is `null`, meaning "everything") each node's topological
+ * *layer* -- longest-path distance from a root (a node/source with no
+ * upstream edges at all), the same DAG-layering convention zhao-cli's
+ * own HTML lineage export uses. A non-null focus not present in
  * `fullLineage.nodes` at all resolves to an empty map -- an empty graph,
  * not a thrown error (the caller decides how to report an unknown
  * target; this module never does).
@@ -75,7 +77,7 @@ function resolveVisibleDepths(
   config: GraphEngineConfig,
 ): Map<NodeId, number | null> {
   if (config.focus === null) {
-    return new Map(fullLineage.nodes.map((n) => [n.id, null]));
+    return computeTopologicalLayers(fullLineage);
   }
 
   const focus = config.focus;
@@ -101,6 +103,66 @@ function resolveVisibleDepths(
   }
 
   return new Map([...depths.entries()].map(([id, depth]) => [id, depth]));
+}
+
+/**
+ * Layers every node by longest-path distance from a root (in-degree
+ * zero) node, via Kahn's algorithm: a node is only finalized (and its
+ * layer used to compute its own downstream neighbors') once every edge
+ * into it has been processed, so each node's layer is always the
+ * *maximum* of `predecessor layer + 1` across all its upstream edges --
+ * not just the first one visited. A node stuck in a cycle (never
+ * reaches in-degree zero, since real dbt DAGs are acyclic and this is
+ * purely a defensive fallback) is placed at layer `0` rather than
+ * dropped from the map entirely.
+ */
+function computeTopologicalLayers(fullLineage: FullLineageJson): Map<NodeId, number> {
+  const downstreamAdjacency = new Map<NodeId, NodeId[]>();
+  const remainingInDegree = new Map<NodeId, number>();
+  for (const node of fullLineage.nodes) {
+    remainingInDegree.set(node.id, 0);
+  }
+  for (const edge of fullLineage.edges) {
+    pushInto(downstreamAdjacency, edge.from, edge.to);
+    remainingInDegree.set(edge.to, (remainingInDegree.get(edge.to) ?? 0) + 1);
+  }
+
+  const layer = new Map<NodeId, number>();
+  let frontier: NodeId[] = [];
+  for (const [id, degree] of remainingInDegree) {
+    if (degree === 0) {
+      layer.set(id, 0);
+      frontier.push(id);
+    }
+  }
+
+  let currentLayer = 0;
+  while (frontier.length > 0) {
+    const next: NodeId[] = [];
+    for (const id of frontier) {
+      for (const neighbor of downstreamAdjacency.get(id) ?? []) {
+        const candidate = currentLayer + 1;
+        if ((layer.get(neighbor) ?? -1) < candidate) {
+          layer.set(neighbor, candidate);
+        }
+        const remaining = (remainingInDegree.get(neighbor) ?? 0) - 1;
+        remainingInDegree.set(neighbor, remaining);
+        if (remaining === 0) {
+          next.push(neighbor);
+        }
+      }
+    }
+    frontier = next;
+    currentLayer += 1;
+  }
+
+  for (const node of fullLineage.nodes) {
+    if (!layer.has(node.id)) {
+      layer.set(node.id, 0);
+    }
+  }
+
+  return layer;
 }
 
 function pushInto<K, V>(map: Map<K, V[]>, key: K, value: V): void {

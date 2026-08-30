@@ -35,10 +35,8 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
       case "downloadCli":
         void vscode.commands.executeCommand("zhao.downloadCli");
         return;
-      case "setProject":
-        if (typeof msg.project === "string" && msg.project.length > 0) {
-          void this.controller.setActiveProjectDir(msg.project);
-        }
+      case "pickProject":
+        void this.controller.pickActiveProjectDir();
         return;
       case "setTarget":
         if (typeof msg.target === "string") {

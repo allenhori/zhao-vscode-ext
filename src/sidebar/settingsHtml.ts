@@ -7,9 +7,12 @@ import { randomUUID } from "node:crypto";
 
 export interface SettingsWebviewState {
   missingExecutable: boolean;
-  /** Every dbt project directory found in the workspace (by
-   * `dbt_project.yml` presence), for the override dropdown. */
-  availableProjects: string[];
+  /** The active project's full path, `null` if none is detected/set yet.
+   * Only its basename is actually shown -- see `projectName` below --
+   * the full path is a title-attribute/subtext detail, not the primary
+   * label; picking a *different* project is handled by a searchable
+   * `QuickPick` (see `LineageController.pickActiveProjectDir`), not
+   * rendered here at all. */
   activeProject: string | null;
   availableTargets: string[];
   activeTarget: string | null;
@@ -17,12 +20,7 @@ export interface SettingsWebviewState {
 
 export function renderSettingsHtml(state: SettingsWebviewState): string {
   const nonce = randomUUID();
-  const projectOptions = state.availableProjects
-    .map(
-      (p) =>
-        `<option value="${escapeHtml(p)}" ${p === state.activeProject ? "selected" : ""}>${escapeHtml(p)}</option>`,
-    )
-    .join("");
+  const projectName = state.activeProject ? basename(state.activeProject) : "(none detected)";
   const targetOptions = state.availableTargets
     .map(
       (t) => `<option value="${escapeHtml(t)}" ${t === state.activeTarget ? "selected" : ""}>${escapeHtml(t)}</option>`,
@@ -41,13 +39,17 @@ export function renderSettingsHtml(state: SettingsWebviewState): string {
   .field label { display: block; margin-bottom: 4px; opacity: 0.8; }
   select { width: 100%; }
   button { cursor: pointer; }
+  .project-link { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; padding: 4px 0; color: var(--vscode-textLink-foreground); font-size: 13px; text-align: left; }
+  .project-link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+  .project-path { opacity: 0.6; font-size: 11px; margin-top: 2px; word-break: break-all; }
 </style>
 </head>
 <body>
   ${state.missingExecutable ? `<div class="banner">zhao-cli was not found on PATH. <button id="download">Download zhao-cli</button></div>` : ""}
   <div class="field">
     <label for="project">Active dbt project</label>
-    <select id="project">${projectOptions || "<option>(none detected)</option>"}</select>
+    <button id="project" class="project-link" title="Click to change the active project">${escapeHtml(projectName)}</button>
+    ${state.activeProject ? `<div class="project-path">${escapeHtml(state.activeProject)}</div>` : ""}
   </div>
   <div class="field">
     <label for="target">Active target</label>
@@ -57,14 +59,22 @@ export function renderSettingsHtml(state: SettingsWebviewState): string {
 (function () {
   const vscode = acquireVsCodeApi();
   document.getElementById("download")?.addEventListener("click", () => vscode.postMessage({ type: "downloadCli" }));
-  document.getElementById("project")?.addEventListener("change", (e) =>
-    vscode.postMessage({ type: "setProject", project: e.target.value }));
+  document.getElementById("project")?.addEventListener("click", () => vscode.postMessage({ type: "pickProject" }));
   document.getElementById("target")?.addEventListener("change", (e) =>
     vscode.postMessage({ type: "setTarget", target: e.target.value }));
 })();
 </script>
 </body>
 </html>`;
+}
+
+/** The last path segment -- `"/tmp/analytics"` -> `"analytics"` --
+ * without pulling in `node:path` just for this one call, and working
+ * the same regardless of separator style. */
+function basename(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, "");
+  const lastSeparator = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+  return lastSeparator === -1 ? trimmed : trimmed.slice(lastSeparator + 1);
 }
 
 function escapeHtml(value: string): string {

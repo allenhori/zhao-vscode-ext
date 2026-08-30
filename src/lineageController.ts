@@ -80,7 +80,60 @@ export class LineageController implements vscode.Disposable {
     this.focus = null;
     this.error = null;
     this.lastTargetPathDir = null;
+
+    // Default the active target to the new project's own first available
+    // one, rather than leaving whatever the *previous* project's target
+    // happened to be (which may not even exist here, or may silently
+    // point at the wrong environment for this project). Only when the
+    // current target isn't already valid for this project -- switching
+    // back to a project you were just on keeps whatever you'd picked.
+    if (dir) {
+      const targets = await this.resolveAvailableTargets(dir);
+      if (targets.length > 0 && !targets.includes(this.activeTarget ?? "")) {
+        await this.context.workspaceState.update(WORKSPACE_STATE_TARGET_KEY, targets[0]);
+      }
+    }
+
     this.changeEmitter.fire();
+  }
+
+  /** Shows a searchable picker (VS Code's own `QuickPick` -- fuzzy-
+   * filters on both the label and the full path as you type, which is
+   * what makes this usable in a monorepo with many dbt projects) of
+   * every dbt project already detected in the workspace, plus a
+   * "Browse…" fallback for one that isn't (e.g. outside the open
+   * workspace folders entirely). */
+  async pickActiveProjectDir(): Promise<void> {
+    const projects = await this.findWorkspaceProjects();
+    const browseLabel = "$(folder-opened) Browse…";
+    const items: vscode.QuickPickItem[] = [
+      ...projects.map((path) => ({ label: basename(path), description: path })),
+      { label: browseLabel },
+    ];
+
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: "Select a dbt project",
+      matchOnDescription: true,
+    });
+    if (!picked) {
+      return;
+    }
+
+    if (picked.label === browseLabel) {
+      const uris = await vscode.window.showOpenDialog({
+        canSelectFolders: true,
+        canSelectFiles: false,
+        canSelectMany: false,
+        openLabel: "Select dbt project",
+        defaultUri: this.activeProjectDir ? vscode.Uri.file(this.activeProjectDir) : undefined,
+      });
+      if (uris?.[0]) {
+        await this.setActiveProjectDir(uris[0].fsPath);
+      }
+      return;
+    }
+
+    await this.setActiveProjectDir(picked.description ?? picked.label);
   }
 
   get activeTarget(): string | null {
@@ -332,36 +385,41 @@ export class LineageController implements vscode.Disposable {
   }
 
   async getSettingsWebviewState(): Promise<SettingsWebviewState> {
-    const availableProjects = await this.findWorkspaceProjects();
     const projectDir = this.activeProjectDir;
-
-    let availableTargets: string[] = [];
-    if (projectDir) {
-      try {
-        const dbtProjectYaml = await vscode.workspace.fs
-          .readFile(vscode.Uri.file(join(projectDir, "dbt_project.yml")))
-          .then((bytes) => Buffer.from(bytes).toString("utf8"));
-        const profileName = readDbtProjectProfileName(dbtProjectYaml);
-        const profilesPath = profileName
-          ? findProfilesYmlPath(projectDir, process.env, homedir())
-          : null;
-        if (profileName && profilesPath) {
-          const profilesYaml = await vscode.workspace.fs
-            .readFile(vscode.Uri.file(profilesPath))
-            .then((bytes) => Buffer.from(bytes).toString("utf8"));
-          availableTargets = parseProfileTargets(profilesYaml, profileName);
-        }
-      } catch {
-        availableTargets = [];
-      }
-    }
+    const availableTargets = projectDir ? await this.resolveAvailableTargets(projectDir) : [];
 
     return {
       missingExecutable: this.executablePath === null,
-      availableProjects,
       activeProject: projectDir,
       availableTargets,
       activeTarget: this.activeTarget,
     };
+  }
+
+  /** The target names available under `projectDir`'s resolved
+   * `profiles.yml` -- `[]` if it has no `profile:` key, no
+   * `profiles.yml` can be found for it at all, or either fails to
+   * read/parse. Shared by `getSettingsWebviewState` (to populate the
+   * dropdown) and `setActiveProjectDir` (to default the active target
+   * when switching projects). */
+  private async resolveAvailableTargets(projectDir: string): Promise<string[]> {
+    try {
+      const dbtProjectYaml = await vscode.workspace.fs
+        .readFile(vscode.Uri.file(join(projectDir, "dbt_project.yml")))
+        .then((bytes) => Buffer.from(bytes).toString("utf8"));
+      const profileName = readDbtProjectProfileName(dbtProjectYaml);
+      const profilesPath = profileName
+        ? findProfilesYmlPath(projectDir, process.env, homedir())
+        : null;
+      if (!profileName || !profilesPath) {
+        return [];
+      }
+      const profilesYaml = await vscode.workspace.fs
+        .readFile(vscode.Uri.file(profilesPath))
+        .then((bytes) => Buffer.from(bytes).toString("utf8"));
+      return parseProfileTargets(profilesYaml, profileName);
+    } catch {
+      return [];
+    }
   }
 }
