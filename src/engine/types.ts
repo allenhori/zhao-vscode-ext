@@ -79,8 +79,13 @@ export interface RenderableNode {
   /** True when `diffHighlight` is on and this node is in
    * `runMetadata.reachedNodeIds` (and not itself `changed`). */
   reached: boolean;
-  /** BFS distance from `focus`, in hops; `0` for `focus` itself, `null`
-   * when there is no `focus` (whole-project render). */
+  /** Horizontal layout position: BFS distance from `focus` in hops
+   * (`0` for `focus` itself) when one is given; otherwise (a
+   * whole-project render, no `focus`) this node's topological layer --
+   * longest-path distance from a root node/source with no upstream
+   * edges. Never `null` in practice today (both branches always assign
+   * a number), but kept optional-typed since a future scoping mode
+   * might genuinely have no layout position to offer. */
   depth: number | null;
 }
 

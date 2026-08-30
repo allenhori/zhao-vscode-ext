@@ -1,0 +1,14 @@
+.vscode/**
+.github/**
+src/**
+test/**
+*.test.ts
+node_modules/**
+*.map
+.gitignore
+.mise.toml
+esbuild.mjs
+tsconfig.json
+vitest.config.*
+.vscodeignore
+CHANGELOG.md.bak

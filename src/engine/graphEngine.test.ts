@@ -37,14 +37,39 @@ const diamond: FullLineageJson = {
 };
 
 describe("buildRenderableGraph -- whole-project render (no focus)", () => {
-  it("includes every node and edge, with a null depth on each node", () => {
+  it("includes every node and edge, laid out by topological layer", () => {
     const graph = buildRenderableGraph(diamond, null, baseConfig({ focus: null }));
     expect(graph.nodes.map((n) => n.id).sort()).toEqual(
       diamond.nodes.map((n) => n.id).sort(),
     );
     expect(graph.edges).toEqual(diamond.edges);
-    expect(graph.nodes.every((n) => n.depth === null)).toBe(true);
     expect(graph.focus).toBeNull();
+
+    const byId = Object.fromEntries(graph.nodes.map((n) => [n.id, n.depth]));
+    // Roots (no upstream edges at all) both land at layer 0.
+    expect(byId["source.raw_orders"]).toBe(0);
+    expect(byId["model.stg_customers"]).toBe(0);
+    // stg_orders depends only on the root source -> layer 1.
+    expect(byId["model.stg_orders"]).toBe(1);
+    // dim_customers depends on stg_orders (layer 1) -- its layer is the
+    // *max* over both its upstream edges, not whichever was visited
+    // first, so it lands at layer 2 even though stg_customers alone
+    // would only imply layer 1.
+    expect(byId["model.dim_customers"]).toBe(2);
+    expect(byId["model.fct_orders"]).toBe(2);
+  });
+
+  it("places a node stuck in a cycle at layer 0 rather than dropping it", () => {
+    const cyclic: FullLineageJson = {
+      nodes: [node("model.a"), node("model.b")],
+      edges: [
+        { from: "model.a", to: "model.b" },
+        { from: "model.b", to: "model.a" },
+      ],
+    };
+    const graph = buildRenderableGraph(cyclic, null, baseConfig({ focus: null }));
+    expect(graph.nodes.map((n) => n.id).sort()).toEqual(["model.a", "model.b"]);
+    expect(graph.nodes.every((n) => n.depth === 0)).toBe(true);
   });
 });
 

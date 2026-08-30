@@ -7,6 +7,8 @@ Free and open source (Apache 2.0). No dbt Cloud connection required, no network 
 kind -- it runs `zhao-cli` locally and reads the JSON it writes, the same way you'd run it from
 a terminal.
 
+![Lineage panel, showing a whole-project dbt dependency graph laid out by dependency layer](images/screenshots/lineage-panel.png)
+
 ## What it does
 
 - **Lineage panel**, docked alongside your Terminal/Output/Debug Console tabs (poppable into a
@@ -25,7 +27,11 @@ a terminal.
   real shell, aliases and all) without being executed for you. zhao-cli computes the command;
   the extension never does, and nothing runs without you pressing Enter yourself.
 - **Settings sidebar**: which dbt project is active (auto-detected in a monorepo, always
-  overridable) and which profile target `zhao` compiles against, remembered per workspace.
+  overridable via a searchable picker -- built for monorepos with many dbt projects, not just
+  one or two) and which profile target `zhao` compiles against, remembered per workspace.
+  Switching projects defaults the target to that project's own first available one, from its own
+  `profiles.yml`, rather than leaving a stale target picked for a different project.
+
 - **Isolated compiles**: every compile this extension triggers writes to a temp directory, never
   your project's real `target/` -- it can't collide with a `dbt run` you triggered yourself.
   Refreshing is an explicit action by default; auto-refresh-on-save is available as an opt-in
