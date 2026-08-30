@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Swapped in a new icon design (Marketplace icon + activity-bar icon).
+
 ## 0.1.0
 
 Initial release.
