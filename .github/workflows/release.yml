@@ -1,0 +1,59 @@
+name: Release
+
+# Triggered by pushing a `v*` tag (e.g. `v0.1.2`). Publishes the extension
+# to the VS Code Marketplace and attaches the packaged `.vsix` to a GitHub
+# Release with that same tag.
+#
+# The tag is required to match `package.json`'s own `version` field
+# exactly (see "Verify tag matches package.json version" below) --
+# checked *before* anything gets published, not after. zhao-cli's own
+# v0.3.1 release shipped with a stale internal version pin once already;
+# this check exists so the same class of "the tag and the manifest
+# silently disagree" mistake fails loudly here instead of publishing a
+# mismatched Marketplace listing.
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  publish:
+    name: Publish to VS Code Marketplace
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+
+      - name: Verify tag matches package.json version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$pkg_version" ]; then
+            echo "::error::Tag v$tag_version does not match package.json's version ($pkg_version) -- bump package.json (and package-lock.json, via 'npm version') to match before tagging, or re-tag to match package.json."
+            exit 1
+          fi
+
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Package
+        run: npx --yes @vscode/vsce package
+
+      - name: Publish to VS Code Marketplace
+        run: npx --yes @vscode/vsce publish --pat "$VSCE_PAT" --packagePath *.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: "*.vsix"
