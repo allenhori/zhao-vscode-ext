@@ -4,7 +4,7 @@
 // beyond argument construction lives here -- see
 // `./engine/graphEngine.ts` for the one tested seam.
 
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { accessSync, constants, readFileSync } from "node:fs";
 import { delimiter, isAbsolute, join } from "node:path";
 
@@ -129,6 +129,93 @@ function isExecutableFile(path: string): boolean {
   } catch {
     return false;
   }
+}
+
+/** Cached across calls -- `undefined` means "not resolved yet this
+ * process", `null` means "resolution was attempted and failed". A
+ * user's PATH doesn't change mid-session, so shelling out on every
+ * lookup would just be wasted latency for the same answer. */
+let cachedShellPath: string | null | undefined;
+
+/**
+ * Resolves the user's *real*, shell-configured PATH by spawning their
+ * default login shell -- not `process.env.PATH` as VS Code itself
+ * already sees it.
+ *
+ * A GUI app launched from the Dock, Finder, or Spotlight (as opposed to
+ * a `code .` from an already-configured terminal) inherits macOS's own
+ * bare-minimum PATH (`/usr/bin:/bin:/usr/sbin:/sbin`) -- it never runs
+ * `~/.zshrc`/`~/.zprofile`/`~/.bash_profile`, which is where `cargo`,
+ * Homebrew, `nvm`, and most other installers actually append to PATH.
+ * So a `zhao` install that's genuinely on the user's PATH everywhere
+ * else (any terminal, any other app) is invisible to
+ * [`locateExecutable`] here even though nothing is actually
+ * misconfigured. This is a well-known Electron/VS Code gap -- the
+ * standard fix (the same one tools like VS Code's own integrated
+ * terminal and most "fix path" utilities use) is to spawn the user's
+ * shell in login+interactive mode (so its profile files actually get
+ * sourced) purely to ask it what PATH it would use, then use that
+ * instead of trusting the GUI process's own environment.
+ *
+ * Returns `null` (not a throw) on any failure -- an unusual `$SHELL`,
+ * a shell that errors on startup, a timeout -- so a broken shell
+ * profile degrades to "PATH resolution didn't help," never a crash;
+ * [`locateExecutableAnywhere`] still falls back to whatever
+ * `process.env.PATH` already had.
+ */
+function resolveShellPath(): string | null {
+  if (cachedShellPath !== undefined) {
+    return cachedShellPath;
+  }
+  const shell = process.env.SHELL && process.env.SHELL.length > 0 ? process.env.SHELL : "/bin/zsh";
+  try {
+    const output = execFileSync(shell, ["-ilc", "echo -n \"$PATH\""], {
+      encoding: "utf8",
+      timeout: 5000,
+      // A login shell's rc files often print banners/MOTD-style output
+      // on stdout too -- stderr is discarded rather than surfaced,
+      // since a noisy-but-successful profile shouldn't count as failure
+      // here (only a non-zero exit/timeout does, via the catch below).
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const trimmed = output.trim();
+    cachedShellPath = trimmed.length > 0 ? trimmed : null;
+  } catch {
+    cachedShellPath = null;
+  }
+  return cachedShellPath;
+}
+
+/**
+ * Like [`locateExecutable`], but when a plain search of
+ * `process.env.PATH` (VS Code's own, possibly PATH-impoverished
+ * environment -- see [`resolveShellPath`]) comes up empty, retries
+ * once against the user's real shell-resolved PATH before giving up.
+ * The env-parameterized [`locateExecutable`] itself stays a pure
+ * function (directly unit-testable against a fake PATH, see
+ * `zhaoCli.test.ts`) -- this wraps it with the one genuinely
+ * environment-dependent, side-effecting fallback, so it's the function
+ * real callers (`LineageController.executablePath`) should use instead
+ * of calling `locateExecutable` directly.
+ *
+ * `resolveShell` is injectable (defaults to the real, process-spawning
+ * [`resolveShellPath`]) purely so tests can stub the one genuinely
+ * environment-dependent step without actually spawning a shell.
+ */
+export function locateExecutableAnywhere(
+  configuredPath: string,
+  env: NodeJS.ProcessEnv = process.env,
+  resolveShell: () => string | null = resolveShellPath,
+): string | null {
+  const direct = locateExecutable(configuredPath, env);
+  if (direct !== null) {
+    return direct;
+  }
+  const shellPath = resolveShell();
+  if (shellPath === null) {
+    return null;
+  }
+  return locateExecutable(configuredPath, { ...env, PATH: shellPath });
 }
 
 export interface RunResult {

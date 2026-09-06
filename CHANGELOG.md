@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.2
+
+- Fixed `zhao-cli` detection when VS Code is launched from the Dock, Finder, or Spotlight
+  rather than from an already-configured terminal: the extension now also resolves PATH
+  through your login shell, so an install that's only on PATH via your shell profile
+  (`~/.zshrc`, `~/.zprofile`, `~/.bash_profile` -- e.g. `cargo`, Homebrew, `nvm`) is found
+  without needing to set `zhao.executablePath` manually or relaunch VS Code from a terminal.
+
 ## 0.1.1
 
 - Swapped in a new icon design (Marketplace icon + activity-bar icon).

@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildDiffArgs, buildLineageArgs, locateExecutable } from "./zhaoCli.js";
+import { buildDiffArgs, buildLineageArgs, locateExecutable, locateExecutableAnywhere } from "./zhaoCli.js";
 
 describe("buildLineageArgs", () => {
   it("always isolates the html redirect and dbt compile to targetPathDir", () => {
@@ -130,5 +130,52 @@ describe("locateExecutable", () => {
 
   it("returns null for an explicit path that doesn't exist", () => {
     expect(locateExecutable(join(dir, "does-not-exist"), { PATH: dir })).toBeNull();
+  });
+});
+
+describe("locateExecutableAnywhere", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "zhao-vscode-ext-cli-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("returns the direct PATH match without ever consulting the shell fallback", () => {
+    const exe = join(dir, "zhao");
+    writeFileSync(exe, "#!/bin/sh\necho hi\n");
+    chmodSync(exe, 0o755);
+    const resolveShell = () => {
+      throw new Error("should not be called when a direct PATH match already exists");
+    };
+
+    expect(locateExecutableAnywhere("zhao", { PATH: dir }, resolveShell)).toBe(exe);
+  });
+
+  it("falls back to the shell-resolved PATH when VS Code's own PATH has nothing", () => {
+    const exe = join(dir, "zhao");
+    writeFileSync(exe, "#!/bin/sh\necho hi\n");
+    chmodSync(exe, 0o755);
+
+    // VS Code's own (bare, GUI-launched) PATH -- deliberately doesn't
+    // include `dir` -- mirrors macOS's real `/usr/bin:/bin:/usr/sbin:/sbin`.
+    const found = locateExecutableAnywhere("zhao", { PATH: "/usr/bin:/bin" }, () => dir);
+
+    expect(found).toBe(exe);
+  });
+
+  it("returns null when neither PATH nor the shell fallback has a match", () => {
+    const resolveShell = () => "/nonexistent-dir";
+
+    expect(locateExecutableAnywhere("zhao", { PATH: "/usr/bin:/bin" }, resolveShell)).toBeNull();
+  });
+
+  it("returns null, not a throw, when the shell fallback itself can't be resolved", () => {
+    const resolveShell = () => null;
+
+    expect(locateExecutableAnywhere("zhao", { PATH: "/usr/bin:/bin" }, resolveShell)).toBeNull();
   });
 });

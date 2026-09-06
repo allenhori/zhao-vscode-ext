@@ -18,7 +18,7 @@ import { findNearestDbtProjectDir } from "./projectDetection.js";
 import { findProfilesYmlPath, parseProfileTargets, readDbtProjectProfileName } from "./profilesYml.js";
 import type { LineageWebviewState } from "./panel/lineageHtml.js";
 import type { SettingsWebviewState } from "./sidebar/settingsHtml.js";
-import { buildDiffArgs, buildLineageArgs, locateExecutable, readZhaoJson, runZhao } from "./zhaoCli.js";
+import { buildDiffArgs, buildLineageArgs, locateExecutableAnywhere, readZhaoJson, runZhao } from "./zhaoCli.js";
 import { parseFullLineageJson, parseRunMetadataJson, type RawFullLineageJson, type RawRunMetadataJson } from "./zhaoJson.js";
 
 const WORKSPACE_STATE_PROJECT_KEY = "zhao.activeProjectDir";
@@ -191,7 +191,7 @@ export class LineageController implements vscode.Disposable {
 
   get executablePath(): string | null {
     const configured = vscode.workspace.getConfiguration("zhao").get<string>("executablePath", "zhao");
-    return locateExecutable(configured);
+    return locateExecutableAnywhere(configured);
   }
 
   // -- Panel-driven setters --
