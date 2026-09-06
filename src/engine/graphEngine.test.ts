@@ -148,16 +148,39 @@ describe("buildRenderableGraph -- depth limiting", () => {
     expect(ids).not.toContain("source.raw_orders");
   });
 
-  it("stamps each visible node with its BFS hop distance from focus", () => {
-    const graph = buildRenderableGraph(
+  it("stamps each visible node with its signed BFS hop distance from focus -- negative upstream, positive downstream, so the panel lays them out on opposite sides of focus rather than in the same column", () => {
+    const upstream = buildRenderableGraph(
       diamond,
       null,
       baseConfig({ focus: "model.dim_customers", direction: "upstream", depth: 2 }),
     );
+    const upstreamById = Object.fromEntries(upstream.nodes.map((n) => [n.id, n.depth]));
+    expect(upstreamById["model.dim_customers"]).toBe(0);
+    expect(upstreamById["model.stg_orders"]).toBe(-1);
+    expect(upstreamById["source.raw_orders"]).toBe(-2);
+
+    const downstream = buildRenderableGraph(
+      diamond,
+      null,
+      baseConfig({ focus: "model.stg_orders", direction: "downstream", depth: 2 }),
+    );
+    const downstreamById = Object.fromEntries(downstream.nodes.map((n) => [n.id, n.depth]));
+    expect(downstreamById["model.stg_orders"]).toBe(0);
+    expect(downstreamById["model.dim_customers"]).toBe(1);
+    expect(downstreamById["model.fct_orders"]).toBe(1);
+  });
+
+  it("both directions land on opposite sides of focus: upstream negative, downstream positive, never sharing a column", () => {
+    const graph = buildRenderableGraph(
+      diamond,
+      null,
+      baseConfig({ focus: "model.stg_orders", direction: "both", depth: 2 }),
+    );
     const byId = Object.fromEntries(graph.nodes.map((n) => [n.id, n.depth]));
-    expect(byId["model.dim_customers"]).toBe(0);
-    expect(byId["model.stg_orders"]).toBe(1);
-    expect(byId["source.raw_orders"]).toBe(2);
+    expect(byId["model.stg_orders"]).toBe(0);
+    expect(byId["source.raw_orders"]).toBe(-1);
+    expect(byId["model.dim_customers"]).toBe(1);
+    expect(byId["model.fct_orders"]).toBe(1);
   });
 
   it("edges are scoped to only those between two visible nodes", () => {

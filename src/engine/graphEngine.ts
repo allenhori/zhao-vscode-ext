@@ -95,11 +95,21 @@ function resolveVisibleDepths(
   const depths = new Map<NodeId, number>();
   depths.set(focus, 0);
 
+  // Upstream hops are recorded *negative*, downstream *positive* -- both
+  // are "distance from focus" in BFS terms, but the panel lays nodes out
+  // left-to-right by depth (see lineageHtml.ts's `render`, sorting
+  // `byDepth`'s keys ascending), and upstream/downstream need to land on
+  // opposite sides of focus for that ordering to read as an actual
+  // dataflow direction rather than an arbitrary column assignment. Before
+  // this, both directions wrote the same unsigned hop count into one
+  // shared map -- a node one hop upstream and one hop downstream both
+  // got `depth: 1` and were rendered in the *same* column, with nothing
+  // distinguishing which side of focus either belonged on.
   if (config.direction === "upstream" || config.direction === "both") {
-    bfs(focus, upstreamAdjacency, config.depth, depths);
+    bfs(focus, upstreamAdjacency, config.depth, depths, -1);
   }
   if (config.direction === "downstream" || config.direction === "both") {
-    bfs(focus, downstreamAdjacency, config.depth, depths);
+    bfs(focus, downstreamAdjacency, config.depth, depths, 1);
   }
 
   return new Map([...depths.entries()].map(([id, depth]) => [id, depth]));
@@ -176,33 +186,45 @@ function pushInto<K, V>(map: Map<K, V[]>, key: K, value: V): void {
 
 /**
  * Breadth-first search from `start` over `adjacency`, up to `maxDepth`
- * hops, recording each visited node's *smallest* hop count into
- * `depths` (shared across both the upstream and downstream passes, so a
- * node reachable both ways keeps whichever distance is smaller). Guards
- * against cycles the same way any BFS does: a node already in `depths`
- * at or before the distance this pass would assign it is never
- * re-enqueued.
+ * hops, writing each visited node's hop count into the shared `depths`
+ * map as `sign * hopCount` (`-1` for the upstream pass, `1` for
+ * downstream -- see `resolveVisibleDepths`, which is what actually
+ * separates upstream/downstream onto opposite sides of focus in the
+ * panel's layout).
+ *
+ * The BFS traversal itself works in plain, unsigned hop-space via a
+ * `localHops` map private to *this* call -- a node's hop count in one
+ * direction has no bearing on its (differently-signed) count in the
+ * other, so the "is this a shorter path" comparison a plain BFS needs
+ * must never be done against the shared, cross-direction `depths` map
+ * directly. Only once this pass's own traversal is complete does its
+ * (unsigned, already-shortest) result get signed and merged in.
  */
 function bfs(
   start: NodeId,
   adjacency: Map<NodeId, NodeId[]>,
   maxDepth: number,
   depths: Map<NodeId, number>,
+  sign: 1 | -1,
 ): void {
+  const localHops = new Map<NodeId, number>();
   let frontier = [start];
   let hop = 0;
   while (frontier.length > 0 && hop < maxDepth) {
     const next: NodeId[] = [];
     for (const id of frontier) {
       for (const neighbor of adjacency.get(id) ?? []) {
-        const existing = depths.get(neighbor);
-        if (existing === undefined || existing > hop + 1) {
-          depths.set(neighbor, hop + 1);
-          next.push(neighbor);
+        if (localHops.has(neighbor)) {
+          continue;
         }
+        localHops.set(neighbor, hop + 1);
+        next.push(neighbor);
       }
     }
     frontier = next;
     hop += 1;
+  }
+  for (const [id, hopCount] of localHops) {
+    depths.set(id, sign * hopCount);
   }
 }
