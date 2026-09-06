@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.3
+
+- Column-level lineage now actually renders: each node box lists its own columns as
+  individual rows, with column-to-column edges drawn between them. The "Column-level"
+  checkbox previously did nothing visible even though the underlying data was already
+  correct.
+- Fixed upstream and downstream nodes sometimes landing in the same column in the graph
+  (a node one hop upstream and one hop downstream of the focused model could render side
+  by side instead of on opposite sides).
+- Picks up `zhao-cli` v0.4.1's dbt Fusion improvements: seeds now appear as their own
+  nodes in the lineage graph (previously only reachable via an edge, never actually drawn)
+  for both dbt-core and Fusion projects.
+
 ## 0.1.2
 
 - Fixed `zhao-cli` detection when VS Code is launched from the Dock, Finder, or Spotlight
