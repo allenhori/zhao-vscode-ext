@@ -74,8 +74,14 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   .node-box.changed { stroke: var(--vscode-gitDecoration-modifiedResourceForeground, orange); stroke-width: 2; }
   .node-box.reached { stroke: var(--vscode-gitDecoration-addedResourceForeground, #4a4); stroke-width: 2; }
   .node-box.selected { stroke: var(--vscode-focusBorder); stroke-width: 2; }
-  .node-label { fill: var(--vscode-foreground); font-size: 11px; pointer-events: none; }
+  .node-label { fill: var(--vscode-foreground); font-size: 11px; pointer-events: none; font-weight: 600; }
+  .column-row { fill: var(--vscode-editorWidget-background); }
+  .column-row:hover { fill: var(--vscode-list-hoverBackground); }
+  .column-label { fill: var(--vscode-descriptionForeground); font-size: 10px; pointer-events: none; }
+  .column-divider { stroke: var(--vscode-panel-border); stroke-width: 1; opacity: 0.5; }
   .edge { stroke: var(--vscode-panel-border); stroke-width: 1; fill: none; }
+  .column-edge { stroke: var(--vscode-charts-blue, #3794ff); stroke-width: 1; fill: none; opacity: 0.7; }
+  .column-edge.highlighted { stroke-width: 2; opacity: 1; }
   #info { margin-top: 8px; font-size: 12px; white-space: pre-wrap; }
   button { cursor: pointer; }
 </style>
@@ -107,6 +113,11 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   const graph = ${graphJson};
   const nodeTerm = ${JSON.stringify(nodeTerm)};
   const originTerm = ${JSON.stringify(originTerm)};
+  // Mirrors graphEngine.ts's own columnLevel gate (RenderableGraph.columnEdges
+  // is already empty when it's off, but this also controls whether the
+  // column-edge *paths* get drawn at all, not just whether there'd be
+  // any to draw).
+  const columnLevel = ${JSON.stringify(state.columnLevel)};
 
   document.getElementById("refresh")?.addEventListener("click", () => vscode.postMessage({ type: "refresh" }));
   document.getElementById("popOut")?.addEventListener("click", () => vscode.postMessage({ type: "popOut" }));
@@ -132,6 +143,35 @@ export function renderLineageHtml(state: LineageWebviewState): string {
       return;
     }
 
+    const boxWidth = 180;
+    const headerHeight = 28;
+    const columnRowHeight = 16;
+    const boxGap = 20;
+
+    // Column-level: every distinct column name touching each node,
+    // gathered from columnEdges (fromNode/fromColumn and toNode/
+    // toColumn) in first-seen order. Empty for a node with no
+    // column-level edges at all -- that node just keeps its plain,
+    // header-only box, same as when column-level is off entirely.
+    const nodeColumns = new Map();
+    function recordColumn(nodeId, column) {
+      let cols = nodeColumns.get(nodeId);
+      if (!cols) {
+        cols = [];
+        nodeColumns.set(nodeId, cols);
+      }
+      if (!cols.includes(column)) cols.push(column);
+    }
+    for (const ce of graph.columnEdges) {
+      recordColumn(ce.fromNode, ce.fromColumn);
+      recordColumn(ce.toNode, ce.toColumn);
+    }
+
+    function boxHeightOf(n) {
+      const cols = nodeColumns.get(n.id);
+      return cols && cols.length > 0 ? headerHeight + cols.length * columnRowHeight : headerHeight;
+    }
+
     const byDepth = new Map();
     for (const n of graph.nodes) {
       const key = n.depth ?? 0;
@@ -140,24 +180,43 @@ export function renderLineageHtml(state: LineageWebviewState): string {
     }
     const columns = [...byDepth.keys()].sort((a, b) => a - b);
 
-    const colWidth = 200;
-    const rowHeight = 48;
+    // Each node's own y within its column is the running total of every
+    // earlier node's box height (plus a gap) in that same column --
+    // boxes are no longer a uniform height once column rows are in
+    // play, so a fixed rowHeight per slot would either clip a
+    // many-column node or waste space under a plain one.
     const positions = new Map();
     columns.forEach((depth, colIndex) => {
       const nodesAtDepth = byDepth.get(depth);
-      nodesAtDepth.forEach((n, rowIndex) => {
-        positions.set(n.id, { x: colIndex * colWidth + 16, y: rowIndex * rowHeight + 16 });
-      });
+      let y = 16;
+      for (const n of nodesAtDepth) {
+        const height = boxHeightOf(n);
+        positions.set(n.id, { x: colIndex * boxWidth + colIndex * 60 + 16, y, height });
+        y += height + boxGap;
+      }
     });
 
+    // A column's own row position, absolute (position.y already
+    // included) -- used by both the column-edge paths below and (via
+    // columnRowY - box.y) the label/divider draw loop further down.
+    function columnRowY(nodeId, column) {
+      const pos = positions.get(nodeId);
+      const cols = nodeColumns.get(nodeId);
+      if (!pos || !cols) return null;
+      const index = cols.indexOf(column);
+      if (index === -1) return null;
+      return pos.y + headerHeight + index * columnRowHeight + columnRowHeight / 2;
+    }
+
     const ns = "http://www.w3.org/2000/svg";
+
     const edgeGroup = document.createElementNS(ns, "g");
     for (const e of graph.edges) {
       const from = positions.get(e.from);
       const to = positions.get(e.to);
       if (!from || !to) continue;
       const path = document.createElementNS(ns, "path");
-      const x1 = from.x + 150, y1 = from.y + 14, x2 = to.x, y2 = to.y + 14;
+      const x1 = from.x + boxWidth, y1 = from.y + headerHeight / 2, x2 = to.x, y2 = to.y + headerHeight / 2;
       const midX = (x1 + x2) / 2;
       path.setAttribute("d", \`M \${x1} \${y1} C \${midX} \${y1}, \${midX} \${y2}, \${x2} \${y2}\`);
       path.setAttribute("class", "edge");
@@ -165,21 +224,50 @@ export function renderLineageHtml(state: LineageWebviewState): string {
     }
     svg.appendChild(edgeGroup);
 
+    // Column-level edges, drawn from the exact row a column occupies in
+    // its source node to the exact row it occupies in its destination
+    // node -- a real column-to-column line, not just an overlay on the
+    // node-level edge above. Skipped (both here and in the row-drawing
+    // loop below) when columnLevel is off, or for any column whose node
+    // isn't in the currently-scoped graph at all.
+    if (columnLevel) {
+      const columnEdgeGroup = document.createElementNS(ns, "g");
+      for (const ce of graph.columnEdges) {
+        const y1 = columnRowY(ce.fromNode, ce.fromColumn);
+        const y2 = columnRowY(ce.toNode, ce.toColumn);
+        const fromPos = positions.get(ce.fromNode);
+        const toPos = positions.get(ce.toNode);
+        if (y1 === null || y2 === null || !fromPos || !toPos) continue;
+        const x1 = fromPos.x + boxWidth, x2 = toPos.x;
+        const midX = (x1 + x2) / 2;
+        const path = document.createElementNS(ns, "path");
+        path.setAttribute("d", \`M \${x1} \${y1} C \${midX} \${y1}, \${midX} \${y2}, \${x2} \${y2}\`);
+        path.setAttribute("class", "column-edge");
+        path.dataset.fromNode = ce.fromNode;
+        path.dataset.fromColumn = ce.fromColumn;
+        path.dataset.toNode = ce.toNode;
+        path.dataset.toColumn = ce.toColumn;
+        columnEdgeGroup.appendChild(path);
+      }
+      svg.appendChild(columnEdgeGroup);
+    }
+
     let selected = null;
     for (const n of graph.nodes) {
       const pos = positions.get(n.id);
+      const cols = nodeColumns.get(n.id) ?? [];
       const g = document.createElementNS(ns, "g");
       g.setAttribute("transform", \`translate(\${pos.x}, \${pos.y})\`);
-      g.style.cursor = "pointer";
 
       const rect = document.createElementNS(ns, "rect");
-      rect.setAttribute("width", "150");
-      rect.setAttribute("height", "28");
+      rect.setAttribute("width", String(boxWidth));
+      rect.setAttribute("height", String(pos.height));
       rect.setAttribute("rx", "4");
       let cls = "node-box" + (n.kind === "source" ? " origin" : "");
       if (n.changed) cls += " changed";
       else if (n.reached) cls += " reached";
       rect.setAttribute("class", cls);
+      rect.style.cursor = "pointer";
       g.appendChild(rect);
 
       const text = document.createElementNS(ns, "text");
@@ -189,7 +277,7 @@ export function renderLineageHtml(state: LineageWebviewState): string {
       text.textContent = n.name;
       g.appendChild(text);
 
-      g.addEventListener("click", () => {
+      rect.addEventListener("click", () => {
         if (selected) selected.classList.remove("selected");
         rect.classList.add("selected");
         selected = rect;
@@ -200,11 +288,60 @@ export function renderLineageHtml(state: LineageWebviewState): string {
           (n.reached ? "\\nreached by this branch's changes" : "");
       });
 
+      // One row per real column, each independently clickable/
+      // hoverable -- clicking a column highlights every column-edge
+      // path touching it (both ends: it may be a source in one edge
+      // and a destination in another) rather than replacing #info's
+      // whole-node summary, so a user can trace one column's lineage
+      // without losing which node they were looking at.
+      cols.forEach((column, index) => {
+        const rowY = headerHeight + index * columnRowHeight;
+
+        if (index > 0) {
+          const divider = document.createElementNS(ns, "line");
+          divider.setAttribute("x1", "0");
+          divider.setAttribute("x2", String(boxWidth));
+          divider.setAttribute("y1", String(rowY));
+          divider.setAttribute("y2", String(rowY));
+          divider.setAttribute("class", "column-divider");
+          g.appendChild(divider);
+        }
+
+        const rowRect = document.createElementNS(ns, "rect");
+        rowRect.setAttribute("x", "0");
+        rowRect.setAttribute("y", String(rowY));
+        rowRect.setAttribute("width", String(boxWidth));
+        rowRect.setAttribute("height", String(columnRowHeight));
+        rowRect.setAttribute("class", "column-row");
+        rowRect.style.cursor = "pointer";
+        g.appendChild(rowRect);
+
+        const label = document.createElementNS(ns, "text");
+        label.setAttribute("x", "10");
+        label.setAttribute("y", String(rowY + columnRowHeight - 4));
+        label.setAttribute("class", "column-label");
+        label.textContent = column;
+        g.appendChild(label);
+
+        rowRect.addEventListener("click", (event) => {
+          event.stopPropagation();
+          for (const path of svg.querySelectorAll(".column-edge")) {
+            const touches =
+              (path.dataset.fromNode === n.id && path.dataset.fromColumn === column) ||
+              (path.dataset.toNode === n.id && path.dataset.toColumn === column);
+            path.classList.toggle("highlighted", touches);
+          }
+          document.getElementById("info").textContent = n.name + "." + column;
+        });
+      });
+
       svg.appendChild(g);
     }
 
-    const maxRows = Math.max(...columns.map((d) => byDepth.get(d).length));
-    svg.setAttribute("height", String(Math.max(200, maxRows * rowHeight + 32)));
+    const maxColumnBottom = Math.max(
+      ...[...positions.values()].map((pos) => pos.y + pos.height),
+    );
+    svg.setAttribute("height", String(Math.max(200, maxColumnBottom + 16)));
   }
 
   render();
