@@ -1,8 +1,12 @@
 name: Release
 
 # Triggered by pushing a `v*` tag (e.g. `v0.1.2`). Publishes the extension
-# to the VS Code Marketplace and attaches the packaged `.vsix` to a GitHub
-# Release with that same tag.
+# to both the VS Code Marketplace and Open VSX (the registry non-VS-Code
+# editors -- Cursor, VSCodium, Windsurf, ... -- install extensions from),
+# and attaches the packaged `.vsix` to a GitHub Release with that same
+# tag. Both publish steps push the exact same `.vsix` built once here, so
+# the two registries never drift from each other or from the GitHub
+# Release's own attached artifact.
 #
 # The tag is required to match `package.json`'s own `version` field
 # exactly (see "Verify tag matches package.json version" below) --
@@ -18,7 +22,7 @@ on:
 
 jobs:
   publish:
-    name: Publish to VS Code Marketplace
+    name: Publish extension
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -51,6 +55,14 @@ jobs:
         run: npx --yes @vscode/vsce publish --pat "$VSCE_PAT" --packagePath *.vsix
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Publish to Open VSX
+        # ovsx's --pat is a global option (see `ovsx --help`), not one of
+        # `publish`'s own -- it must precede the subcommand, unlike
+        # @vscode/vsce's --pat above.
+        run: npx --yes ovsx --pat "$OPEN_VSX" publish *.vsix
+        env:
+          OPEN_VSX: ${{ secrets.OPEN_VSX }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
