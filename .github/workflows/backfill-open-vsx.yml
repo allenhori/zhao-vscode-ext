@@ -35,6 +35,17 @@ jobs:
       - name: Package
         run: npx --yes @vscode/vsce package
 
+      # A one-time prerequisite Open VSX itself requires: a namespace
+      # matching the publisher name must exist before it'll accept a
+      # publish at all (independent of whether the PAT itself is valid).
+      # `|| true` because this only needs to succeed once, ever -- a
+      # second run (e.g. a future backfill for a different tag) hitting
+      # an already-created namespace is expected, not an error.
+      - name: Ensure the Open VSX namespace exists
+        run: npx --yes ovsx --pat "$OPEN_VSX" create-namespace allenhori || true
+        env:
+          OPEN_VSX: ${{ secrets.OPEN_VSX }}
+
       - name: Publish to Open VSX
         run: npx --yes ovsx --pat "$OPEN_VSX" publish *.vsix
         env:
