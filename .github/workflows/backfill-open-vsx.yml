@@ -1,0 +1,41 @@
+name: Backfill Open VSX publish
+
+# One-off, temporary workflow: publishes an *already-tagged, already
+# VS-Code-Marketplace-published* version to Open VSX, for a version cut
+# before the Open VSX publish step existed in release.yml. Does nothing
+# else -- no Marketplace publish, no GitHub Release changes -- so it's
+# safe to run against a tag that's already fully released everywhere
+# else. Delete this file once the backfill it exists for is done; it has
+# no ongoing purpose once every future release already publishes to Open
+# VSX via release.yml itself.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Already-published tag to backfill onto Open VSX (e.g. v0.1.3)"
+        required: true
+
+jobs:
+  publish:
+    name: Publish to Open VSX
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Package
+        run: npx --yes @vscode/vsce package
+
+      - name: Publish to Open VSX
+        run: npx --yes ovsx --pat "$OPEN_VSX" publish *.vsix
+        env:
+          OPEN_VSX: ${{ secrets.OPEN_VSX }}
