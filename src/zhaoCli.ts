@@ -261,10 +261,20 @@ export interface RunResult {
 /** Runs `executable args…`, always resolving (never rejecting) with the
  * captured exit code/stdout/stderr -- a non-zero exit or spawn failure
  * is a normal, expected outcome here (e.g. an unresolved lineage
- * target), for the caller to interpret, not this function. */
-export function runZhao(executable: string, args: string[]): Promise<RunResult> {
+ * target), for the caller to interpret, not this function.
+ *
+ * `signal`, if given, kills the subprocess when aborted -- used by
+ * `LineageController.previewNode` to actually terminate a superseded
+ * preview's `zhao show` invocation, not just discard its result. Without
+ * this, switching between two "Preview Data" targets before the first
+ * one resolves left the first's subprocess running to completion in the
+ * background: wasted compute, and for an OAuth-gated warehouse target
+ * (e.g. Databricks), two concurrent invocations can contend over a
+ * shared local resource (the OAuth callback listener), which is a
+ * real, observed way for the second one to hang. */
+export function runZhao(executable: string, args: string[], signal?: AbortSignal): Promise<RunResult> {
   return new Promise((resolve) => {
-    execFile(executable, args, { maxBuffer: 64 * 1024 * 1024 }, (error, stdout, stderr) => {
+    execFile(executable, args, { maxBuffer: 64 * 1024 * 1024, signal }, (error, stdout, stderr) => {
       const code = error && "code" in error && typeof error.code === "number" ? error.code : error ? 1 : 0;
       resolve({ code, stdout, stderr });
     });

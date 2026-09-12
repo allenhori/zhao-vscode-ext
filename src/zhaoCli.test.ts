@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildDiffArgs, buildLineageArgs, buildShowArgs, locateExecutable, locateExecutableAnywhere } from "./zhaoCli.js";
+import { buildDiffArgs, buildLineageArgs, buildShowArgs, locateExecutable, locateExecutableAnywhere, runZhao } from "./zhaoCli.js";
 
 describe("buildLineageArgs", () => {
   it("always isolates the html redirect and dbt compile to targetPathDir", () => {
@@ -206,4 +206,53 @@ describe("locateExecutableAnywhere", () => {
 
     expect(locateExecutableAnywhere("zhao", { PATH: "/usr/bin:/bin" }, resolveShell)).toBeNull();
   });
+});
+
+describe("runZhao", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "zhao-vscode-ext-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("resolves normally with the captured exit code/stdout/stderr when not aborted", async () => {
+    const exe = join(dir, "zhao");
+    writeFileSync(exe, "#!/bin/sh\necho hi\n");
+    chmodSync(exe, 0o755);
+
+    const result = await runZhao(exe, []);
+    expect(result).toEqual({ code: 0, stdout: "hi\n", stderr: "" });
+  });
+
+  /** Ticket regression: two overlapping `previewNode` calls (switching
+   * "Preview Data" targets before the first resolves) previously left
+   * the first's subprocess running to completion in the background --
+   * wasted compute, and for an OAuth-gated target, a real way for a
+   * second concurrent invocation to hang contending over a shared local
+   * resource. `runZhao`'s `signal` parameter is what
+   * `LineageController.previewNode` now uses to actually kill a
+   * superseded call's subprocess, not just discard its eventual result. */
+  it("kills the subprocess and resolves promptly when aborted, rather than waiting for it to finish on its own", async () => {
+    const exe = join(dir, "slow-zhao");
+    // A script that would otherwise run for 30s -- long enough that
+    // this test would clearly time out if the abort didn't actually
+    // kill the process.
+    writeFileSync(exe, "#!/bin/sh\nsleep 30\necho should-never-print\n");
+    chmodSync(exe, 0o755);
+
+    const controller = new AbortController();
+    const runPromise = runZhao(exe, [], controller.signal);
+    controller.abort();
+    const result = await runPromise;
+
+    // A killed process never reaches its own `echo`, and resolves (not
+    // rejects, matching runZhao's own "always resolves" contract) with
+    // a non-zero code.
+    expect(result.stdout).not.toContain("should-never-print");
+    expect(result.code).not.toBe(0);
+  }, 5000);
 });
