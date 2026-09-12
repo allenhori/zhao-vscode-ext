@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.5.0
+
+- New **Preview tab**, alongside Lineage in the same panel (now titled just "zhao"). Right-click
+  a node and choose "Preview Data" to see a live, row-capped preview of its query results --
+  works on both classic dbt-core projects and dbt Fusion projects. Requires `zhao-cli` v0.5.0 or
+  later.
+- New "Open Model File" right-click action, jumping straight to a node's `.sql`/`.csv` source.
+- Lineage nodes now show an icon (model/source/seed) and a color (by materialization --
+  table/view/incremental/ephemeral) instead of a plain uniform box, so the graph is scannable at
+  a glance.
+- Fixed long model names overflowing their node's box -- text now wraps onto a second line
+  instead.
+
 ## 0.1.3
 
 - Column-level lineage now actually renders: each node box lists its own columns as
