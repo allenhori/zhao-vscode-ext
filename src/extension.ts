@@ -25,7 +25,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("zhao.popOutLineage", () => {
       const panel = vscode.window.createWebviewPanel(
         "zhao.lineagePopOut",
-        "zhao Lineage",
+        "zhao",
         vscode.ViewColumn.Active,
         { enableScripts: true },
       );
@@ -67,6 +67,12 @@ export function activate(context: vscode.ExtensionContext): void {
           void controller.copyRecommendedCommand();
         } else if (msg.type === "runCommand") {
           controller.runRecommendedCommandInTerminal();
+        } else if (msg.type === "setActiveTab" && (msg.tab === "lineage" || msg.tab === "preview")) {
+          controller.setActiveTab(msg.tab);
+        } else if (msg.type === "previewNode" && typeof msg.nodeId === "string") {
+          void controller.previewNode(msg.nodeId);
+        } else if (msg.type === "openModelFile" && typeof msg.nodeId === "string") {
+          void controller.openModelFile(msg.nodeId);
         }
       });
     }),

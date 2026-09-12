@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildDiffArgs, buildLineageArgs, locateExecutable, locateExecutableAnywhere } from "./zhaoCli.js";
+import { buildDiffArgs, buildLineageArgs, buildShowArgs, locateExecutable, locateExecutableAnywhere } from "./zhaoCli.js";
 
 describe("buildLineageArgs", () => {
   it("always isolates the html redirect and dbt compile to targetPathDir", () => {
@@ -89,6 +89,34 @@ describe("buildDiffArgs", () => {
 
     const withoutAgainst = buildDiffArgs({ projectDir: "/proj", targetPathDir: "/tmp/zhao-abc" });
     expect(withoutAgainst).not.toContain("--against");
+  });
+});
+
+describe("buildShowArgs", () => {
+  it("always requests JSON output, never the human-readable default", () => {
+    const args = buildShowArgs({ projectDir: "/proj", target: "customers" });
+    expect(args).toEqual(["show", "customers", "--project-dir", "/proj", "--output", "json"]);
+  });
+
+  it("passes no --target-path/--limit override -- zhao show runs no compile of its own to isolate", () => {
+    const args = buildShowArgs({ projectDir: "/proj", target: "customers" });
+    expect(args).not.toContain("--target-path");
+    expect(args).not.toContain("--limit");
+  });
+
+  it("forwards --target as a --dbt-arg pair when a profile target is given", () => {
+    const args = buildShowArgs({ projectDir: "/proj", target: "customers", profileTarget: "ci" });
+    expect(args).toEqual(expect.arrayContaining(["--dbt-arg", "--target", "--dbt-arg", "ci"]));
+  });
+
+  it("omits the --target pair entirely when no profile target is given", () => {
+    const args = buildShowArgs({ projectDir: "/proj", target: "customers" });
+    expect(args).not.toContain("--target");
+  });
+
+  it("appends --dbt-command when a wrapper is configured", () => {
+    const args = buildShowArgs({ projectDir: "/proj", target: "customers", dbtCommand: "uv run dbt" });
+    expect(args.slice(-2)).toEqual(["--dbt-command", "uv run dbt"]);
   });
 });
 

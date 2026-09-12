@@ -20,11 +20,15 @@ export interface RawFullLineageJson {
 interface RawGraphNode {
   id: string;
   name: string;
-  /** zhao's generic Node/Origin discriminant -- `node_term`/`origin_term`
-   * carry the Adapter Vocabulary's actual display words (e.g. "model"/
-   * "source" for dbt); this extension never shows "node"/"origin" to
-   * the user. */
-  kind: "node" | "origin";
+  /** zhao's generic Node/Origin/seed discriminant -- `node_term`/
+   * `origin_term` carry the Adapter Vocabulary's actual display words
+   * (e.g. "model"/"source" for dbt); this extension never shows
+   * "node"/"origin" to the user. "seed" has no Adapter Vocabulary
+   * translation of its own -- it's already a neutral, tool-agnostic
+   * term (dbt itself calls it a "seed" too). */
+  kind: "node" | "origin" | "seed";
+  /** Present only for `kind: "node"` -- see `FullLineageNode.materialization`. */
+  materialization?: string;
 }
 
 interface RawGraphEdge {
@@ -75,8 +79,9 @@ export function parseFullLineageJson(raw: RawFullLineageJson): ParsedFullLineage
     graph: {
       nodes: raw.nodes.map((n) => ({
         id: n.id,
-        kind: n.kind === "origin" ? "source" : "model",
+        kind: n.kind === "origin" ? "source" : n.kind === "seed" ? "seed" : "model",
         name: n.name,
+        materialization: n.materialization,
       })),
       edges: edges.map((e) => ({ from: e.upstream, to: e.downstream })),
       columnEdges: columnEdges.map((e) => ({

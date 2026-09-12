@@ -57,6 +57,26 @@ describe("parseFullLineageJson", () => {
     expect(nodeTerm).toBe("model");
     expect(originTerm).toBe("source");
   });
+
+  it("maps a seed node's kind straight through as 'seed', not folded into 'model'", () => {
+    const withSeed: RawFullLineageJson = {
+      ...raw,
+      nodes: [...raw.nodes, { id: "seed.raw_customers", name: "raw_customers", kind: "seed" }],
+    };
+    const { graph } = parseFullLineageJson(withSeed);
+    expect(graph.nodes).toEqual(
+      expect.arrayContaining([{ id: "seed.raw_customers", kind: "seed", name: "raw_customers" }]),
+    );
+  });
+
+  it("carries a model node's materialization through unchanged", () => {
+    const withMaterialization: RawFullLineageJson = {
+      ...raw,
+      nodes: [{ id: "model.dim_customers", name: "dim_customers", kind: "node", materialization: "incremental" }],
+    };
+    const { graph } = parseFullLineageJson(withMaterialization);
+    expect(graph.nodes[0]).toMatchObject({ materialization: "incremental" });
+  });
 });
 
 describe("parseRunMetadataJson", () => {

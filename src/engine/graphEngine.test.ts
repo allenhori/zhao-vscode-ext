@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRenderableGraph } from "./graphEngine.js";
+import { buildRenderableGraph, colorTokenFor, iconFor } from "./graphEngine.js";
 import type { FullLineageJson, GraphEngineConfig, RunMetadataJson } from "./types.js";
 
 function node(id: string, kind: "model" | "source" = "model") {
@@ -333,5 +333,61 @@ describe("buildRenderableGraph -- diff highlight", () => {
   it("does nothing when diffHighlight is on but no run metadata was given", () => {
     const graph = buildRenderableGraph(diamond, null, baseConfig({ diffHighlight: true }));
     expect(graph.nodes.every((n) => !n.changed && !n.reached)).toBe(true);
+  });
+});
+
+describe("materialization passthrough", () => {
+  it("carries a model node's materialization onto its RenderableNode", () => {
+    const project: FullLineageJson = {
+      nodes: [{ id: "model.p.a", kind: "model", name: "a", materialization: "incremental" }],
+      edges: [],
+    };
+    const graph = buildRenderableGraph(project, null, baseConfig());
+    expect(graph.nodes[0]).toMatchObject({ materialization: "incremental" });
+  });
+
+  it("leaves materialization undefined for a source or seed", () => {
+    const project: FullLineageJson = {
+      nodes: [
+        { id: "source.p.raw", kind: "source", name: "raw" },
+        { id: "seed.p.raw_orders", kind: "seed", name: "raw_orders" },
+      ],
+      edges: [],
+    };
+    const graph = buildRenderableGraph(project, null, baseConfig());
+    expect(graph.nodes.every((n) => n.materialization === undefined)).toBe(true);
+  });
+});
+
+describe("iconFor", () => {
+  it("returns the node's own kind as its icon selector", () => {
+    expect(iconFor("model")).toBe("model");
+    expect(iconFor("source")).toBe("source");
+    expect(iconFor("seed")).toBe("seed");
+  });
+});
+
+describe("colorTokenFor", () => {
+  it("returns 'source' for a source, regardless of materialization", () => {
+    expect(colorTokenFor({ kind: "source", materialization: undefined })).toBe("source");
+  });
+
+  it("returns 'seed' for a seed, regardless of materialization", () => {
+    expect(colorTokenFor({ kind: "seed", materialization: undefined })).toBe("seed");
+  });
+
+  it("returns each recognized materialization verbatim for a model", () => {
+    expect(colorTokenFor({ kind: "model", materialization: "table" })).toBe("table");
+    expect(colorTokenFor({ kind: "model", materialization: "view" })).toBe("view");
+    expect(colorTokenFor({ kind: "model", materialization: "incremental" })).toBe("incremental");
+    expect(colorTokenFor({ kind: "model", materialization: "ephemeral" })).toBe("ephemeral");
+  });
+
+  it("falls back to 'other' for an unrecognized materialization string", () => {
+    expect(colorTokenFor({ kind: "model", materialization: "materialized_view" })).toBe("other");
+  });
+
+  it("falls back to 'other' for a model with no materialization at all", () => {
+    expect(colorTokenFor({ kind: "model", materialization: undefined })).toBe("other");
   });
 });
