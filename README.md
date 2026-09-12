@@ -17,6 +17,16 @@ a terminal.
   either directly in the panel, no re-running a command by hand.
 - **Column-level lineage**, toggled on top of the model-level graph, for tracing a specific
   column's provenance.
+- **Preview tab**: right-click any model, seed, or source in the graph and choose "Preview Data"
+  to see a live, row-capped preview of its query results, right next to the lineage view -- works
+  on both classic dbt-core and dbt Fusion projects, and respects your project's own `dbt`
+  wrapper/`--vars`/`--target` configuration the same way the lineage compile does. The default
+  row cap is configurable via `zhao-cli`'s `zhao.yml`.
+- **Open Model File**, also from the right-click menu, jumps straight to a node's `.sql`/`.csv`
+  source.
+- **Node icons and color-coding**: each node shows an icon for its kind (model/source/seed) and a
+  color for its materialization (table/view/incremental/ephemeral), so a large graph is scannable
+  at a glance instead of a wall of identical boxes.
 - **Diff highlighting**: see which models were actually changed on your current branch, and
   which downstream models are genuinely reached by that change -- the same data `zhao check`/
   `zhao diff` already compute in CI, now visible before you even open a PR.
