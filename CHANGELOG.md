@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.1
+
+- Fixed a race condition where switching "Preview Data" between two models in quick succession
+  could show the wrong one's result.
+- The Preview tab's own model/seed picker no longer offers sources (which have no query of their
+  own to preview), matching the right-click menu.
+- Fixed long-but-single-line model names occasionally overflowing their node's box.
+- NULL, an empty string, and non-finite numbers (NaN/Infinity) now render distinctly in preview
+  results instead of all looking the same.
+
 ## 0.5.0
 
 - New **Preview tab**, alongside Lineage in the same panel (now titled just "zhao"). Right-click

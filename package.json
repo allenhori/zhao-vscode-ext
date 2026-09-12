@@ -2,7 +2,7 @@
   "name": "zhao-vscode-ext",
   "displayName": "zhao: dbt Lineage",
   "description": "Depth-scoped, diff-aware dbt lineage in your editor -- a companion to zhao-cli, offline and free.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "publisher": "allenhori",
   "license": "Apache-2.0",
