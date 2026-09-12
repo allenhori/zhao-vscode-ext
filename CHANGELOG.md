@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.2
+
+- Switching "Preview Data" between two models before the first one finished previously left the
+  first's query running in the background instead of actually stopping it -- it's now cancelled
+  for real, which also avoids a real case of two concurrent warehouse connections (e.g. to
+  Databricks) contending with each other.
+- The Preview tab's loading message now notes that a first connection to some warehouse targets
+  can take up to a minute, so it doesn't look stuck while it's actually just authenticating.
+
 ## 0.5.1
 
 - Fixed a race condition where switching "Preview Data" between two models in quick succession
