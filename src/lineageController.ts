@@ -68,6 +68,16 @@ export class LineageController implements vscode.Disposable {
    * stale result land after B's, silently showing the wrong node's
    * data with no indication anything raced. */
   private previewRequestId = 0;
+  /** Aborts the currently in-flight `zhao show` subprocess, if any --
+   * set at the start of every `previewNode` call, right after canceling
+   * whatever the previous call set. `previewRequestId` alone only
+   * decides which *result* gets shown; without also killing the
+   * superseded subprocess, switching preview targets before the first
+   * one resolves left it running to completion in the background,
+   * wasting compute and (for an OAuth-gated target like Databricks)
+   * risking two concurrent invocations contending over a shared local
+   * resource such as the OAuth callback listener. */
+  private previewAbortController: AbortController | null = null;
   /** The `--target-path` isolation directory the last successful
    * compile used -- reused by a `compile: false` refresh (e.g. turning
    * diff-highlight on with no run metadata cached yet) instead of
@@ -384,6 +394,13 @@ export class LineageController implements vscode.Disposable {
     // in `finally` below rather than overwriting a newer one's result.
     const requestId = ++this.previewRequestId;
 
+    // Actually kill the previous call's still-running subprocess (not
+    // just its eventual result) -- see `previewAbortController`'s own
+    // comment for why this matters beyond the requestId check alone.
+    this.previewAbortController?.abort();
+    const abortController = new AbortController();
+    this.previewAbortController = abortController;
+
     this.activeTab = "preview";
     this.previewFocus = nodeId;
     this.previewLoading = true;
@@ -407,9 +424,12 @@ export class LineageController implements vscode.Disposable {
         target: node.name,
         profileTarget: this.activeTarget ?? undefined,
       });
-      const zhaoResult = await runZhao(executable, args);
+      const zhaoResult = await runZhao(executable, args, abortController.signal);
       result = parsePreviewResult(zhaoResult.code, zhaoResult.stdout, zhaoResult.stderr);
     } catch (err) {
+      // Includes an abort (a newer previewNode call superseded this
+      // one) -- harmless: the requestId check just below discards this
+      // result regardless of whether it's a real error or an abort.
       result = { error: err instanceof Error ? err.message : String(err) };
     }
 

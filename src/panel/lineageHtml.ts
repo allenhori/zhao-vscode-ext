@@ -59,7 +59,11 @@ export interface LineageWebviewState {
  * neutral placeholder before anything's been previewed at all. */
 function renderPreviewBody(state: LineageWebviewState, previewFocusNode: { id: string; name: string } | null): string {
   if (state.previewLoading) {
-    return `<div class="preview-empty">Loading preview${previewFocusNode ? ` for ${escapeHtml(previewFocusNode.name)}` : ""}…</div>`;
+    // The first connection to an OAuth-gated warehouse target (e.g.
+    // Databricks) can genuinely take up to a minute -- dbt itself
+    // prints nothing to stdout/stderr for the whole handshake, so with
+    // no time-based hint here this reads as hung rather than working.
+    return `<div class="preview-empty">Loading preview${previewFocusNode ? ` for ${escapeHtml(previewFocusNode.name)}` : ""}… (the first connection to some warehouse targets can take up to a minute)</div>`;
   }
   if (!state.previewResult) {
     return `<div class="preview-empty">Right-click a node in the Lineage tab and choose "Preview Data," or pick one above.</div>`;
