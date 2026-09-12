@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildRenderableGraph, colorTokenFor, iconFor } from "./graphEngine.js";
+import { buildRenderableGraph, colorTokenFor } from "./graphEngine.js";
 import type { FullLineageJson, GraphEngineConfig, RunMetadataJson } from "./types.js";
 
 function node(id: string, kind: "model" | "source" = "model") {
@@ -359,11 +359,21 @@ describe("materialization passthrough", () => {
   });
 });
 
-describe("iconFor", () => {
-  it("returns the node's own kind as its icon selector", () => {
-    expect(iconFor("model")).toBe("model");
-    expect(iconFor("source")).toBe("source");
-    expect(iconFor("seed")).toBe("seed");
+describe("colorToken passthrough", () => {
+  it("carries buildRenderableGraph's own colorTokenFor result onto each RenderableNode", () => {
+    const project: FullLineageJson = {
+      nodes: [
+        { id: "source.p.raw", kind: "source", name: "raw" },
+        { id: "seed.p.raw_orders", kind: "seed", name: "raw_orders" },
+        { id: "model.p.a", kind: "model", name: "a", materialization: "view" },
+      ],
+      edges: [],
+    };
+    const graph = buildRenderableGraph(project, null, baseConfig());
+    const tokenFor = (id: string) => graph.nodes.find((n) => n.id === id)?.colorToken;
+    expect(tokenFor("source.p.raw")).toBe("source");
+    expect(tokenFor("seed.p.raw_orders")).toBe("seed");
+    expect(tokenFor("model.p.a")).toBe("view");
   });
 });
 

@@ -76,6 +76,17 @@ export interface GraphEngineConfig {
   diffHighlight: boolean;
 }
 
+/** The color-coding token a lineage node renders with -- `"source"`/
+ * `"seed"` for those kinds, otherwise a model's materialization
+ * ("table"/"view"/"incremental"/"ephemeral"), or `"other"` for an
+ * unrecognized materialization. Defined here (not in `graphEngine.ts`,
+ * where the one function that derives it, `colorTokenFor`, lives) so
+ * `RenderableNode` can carry the already-computed result without a
+ * circular import -- the webview then reads `colorToken` straight off
+ * each node as data, rather than re-deriving the same decision with a
+ * second, hand-copied implementation of its own. */
+export type ColorToken = "table" | "view" | "incremental" | "ephemeral" | "seed" | "source" | "other";
+
 export interface RenderableNode {
   id: NodeId;
   kind: "model" | "source" | "seed";
@@ -84,6 +95,9 @@ export interface RenderableNode {
   /** Echoed straight from `FullLineageNode.materialization` -- present
    * only for `kind: "model"`. */
   materialization?: string;
+  /** This node's color-coding token, already resolved by
+   * `graphEngine.ts`'s `colorTokenFor` -- see [`ColorToken`]. */
+  colorToken: ColorToken;
   /** True when `diffHighlight` is on and this node is in
    * `runMetadata.changedNodeIds`. */
   changed: boolean;
