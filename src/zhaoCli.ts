@@ -63,6 +63,40 @@ export function buildLineageArgs(invocation: LineageInvocation): string[] {
   return args;
 }
 
+export interface ShowInvocation {
+  projectDir: string;
+  /** The model/seed/source to preview -- a single bare selector, never
+   * a `+`-prefixed/suffixed graph scope (see `zhao show`'s own CLI
+   * docs -- it previews one resolved relation's query, not a slice of
+   * the graph). */
+  target: string;
+  dbtCommand?: string;
+  /** See `LineageInvocation.profileTarget`. */
+  profileTarget?: string;
+}
+
+/** Builds argv for `zhao show <target> --output json`, always JSON
+ * (never the human-readable default) -- the Preview tab always parses
+ * this programmatically, never displays raw dbt terminal output.
+ * Deliberately passes no `--target-path` override: unlike `zhao
+ * lineage --compile`, `zhao show` runs no compile of its own to
+ * isolate -- it's a live query against whatever the project's already-
+ * compiled manifest describes, so there's no otherwise-unwanted
+ * artifact to redirect away from the project's real `target/`. No
+ * `--limit` override either -- the project's own `zhao.yml`
+ * `show.default_limit` (or zhao-cli's hardcoded fallback) always
+ * applies, per the spec's "no per-click limit override in v1" decision. */
+export function buildShowArgs(invocation: ShowInvocation): string[] {
+  const args = ["show", invocation.target, "--project-dir", invocation.projectDir, "--output", "json"];
+  if (invocation.profileTarget) {
+    args.push("--dbt-arg", "--target", "--dbt-arg", invocation.profileTarget);
+  }
+  if (invocation.dbtCommand) {
+    args.push("--dbt-command", invocation.dbtCommand);
+  }
+  return args;
+}
+
 export interface DiffInvocation {
   projectDir: string;
   /** Must match the `targetPathDir` a preceding `zhao lineage --compile`

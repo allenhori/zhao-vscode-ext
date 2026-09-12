@@ -42,6 +42,7 @@ export function buildRenderableGraph(
         kind: n.kind,
         name: n.name,
         package: n.package,
+        materialization: n.materialization,
         changed,
         reached,
         depth: depthById.get(n.id) ?? null,
@@ -173,6 +174,42 @@ function computeTopologicalLayers(fullLineage: FullLineageJson): Map<NodeId, num
   }
 
   return layer;
+}
+
+/** The icon a lineage node renders -- one per `kind`. Kept as its own
+ * (currently identity) function rather than inlined at each render
+ * call site, so icon selection is one tested decision, not a choice
+ * duplicated between the panel webview and the pop-out editor-tab
+ * webview. */
+export function iconFor(kind: RenderableNode["kind"]): RenderableNode["kind"] {
+  return kind;
+}
+
+/** The color-coding token a lineage node renders -- `"source"`/`"seed"`
+ * for those kinds (each has its own fixed color, no materialization of
+ * their own), otherwise the model's materialization
+ * ("table"/"view"/"incremental"/"ephemeral"), or `"other"` for any
+ * materialization this extension doesn't specifically recognize (an
+ * unrecognized string is never dropped upstream -- see
+ * `Materialization::Other` in zhao-cli -- but it also never grows the
+ * color palette on its own; it always renders as the same neutral
+ * fallback). A model with no `materialization` at all (shouldn't happen
+ * given zhao-cli's own contract, but defensively handled rather than
+ * assumed) also falls back to `"other"`. */
+export type ColorToken = "table" | "view" | "incremental" | "ephemeral" | "seed" | "source" | "other";
+
+const RECOGNIZED_MATERIALIZATIONS = new Set(["table", "view", "incremental", "ephemeral"]);
+
+export function colorTokenFor(node: Pick<RenderableNode, "kind" | "materialization">): ColorToken {
+  if (node.kind === "source") {
+    return "source";
+  }
+  if (node.kind === "seed") {
+    return "seed";
+  }
+  return node.materialization && RECOGNIZED_MATERIALIZATIONS.has(node.materialization)
+    ? (node.materialization as ColorToken)
+    : "other";
 }
 
 function pushInto<K, V>(map: Map<K, V[]>, key: K, value: V): void {

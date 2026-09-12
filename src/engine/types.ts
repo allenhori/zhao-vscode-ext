@@ -9,12 +9,20 @@ export type NodeId = string;
 /** One node in `full_lineage.json`'s `nodes` array. */
 export interface FullLineageNode {
   id: NodeId;
-  /** dbt's own vocabulary: "model" or "source" -- never zhao's internal
-   * "Node"/"Origin" terms, per the Adapter Vocabulary convention. */
-  kind: "model" | "source";
+  /** dbt's own vocabulary: "model", "source", or "seed" -- never zhao's
+   * internal "Node"/"Origin" terms, per the Adapter Vocabulary
+   * convention. "seed" is its own `kind`, not folded into a
+   * materialization value -- a seed's "kind of thing" (a checked-in
+   * file loaded verbatim) is orthogonal to materialization, which only
+   * meaningfully varies for a real model. */
+  kind: "model" | "source" | "seed";
   name: string;
-  /** dbt package this model/source belongs to. */
+  /** dbt package this model/source/seed belongs to. */
   package?: string;
+  /** This node's materialization ("table"/"view"/"incremental"/
+   * "ephemeral"/some other recognized-verbatim string) -- present only
+   * for `kind: "model"`; a "source" or "seed" has none. */
+  materialization?: string;
 }
 
 /** One model-level edge in `full_lineage.json`'s `edges` array. */
@@ -70,9 +78,12 @@ export interface GraphEngineConfig {
 
 export interface RenderableNode {
   id: NodeId;
-  kind: "model" | "source";
+  kind: "model" | "source" | "seed";
   name: string;
   package?: string;
+  /** Echoed straight from `FullLineageNode.materialization` -- present
+   * only for `kind: "model"`. */
+  materialization?: string;
   /** True when `diffHighlight` is on and this node is in
    * `runMetadata.changedNodeIds`. */
   changed: boolean;

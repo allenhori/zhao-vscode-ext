@@ -66,6 +66,21 @@ export class LineageViewProvider implements vscode.WebviewViewProvider {
       case "runCommand":
         this.controller.runRecommendedCommandInTerminal();
         return;
+      case "setActiveTab":
+        if (msg.tab === "lineage" || msg.tab === "preview") {
+          this.controller.setActiveTab(msg.tab);
+        }
+        return;
+      case "previewNode":
+        if (typeof msg.nodeId === "string") {
+          void this.controller.previewNode(msg.nodeId);
+        }
+        return;
+      case "openModelFile":
+        if (typeof msg.nodeId === "string") {
+          void this.controller.openModelFile(msg.nodeId);
+        }
+        return;
       default:
         return;
     }

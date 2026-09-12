@@ -14,11 +14,12 @@ import { basename, join } from "node:path";
 import * as vscode from "vscode";
 import { buildRenderableGraph } from "./engine/graphEngine.js";
 import type { Direction, FullLineageJson, RunMetadataJson } from "./engine/types.js";
-import { findNearestDbtProjectDir } from "./projectDetection.js";
+import { parsePreviewResult, type PreviewResult } from "./engine/previewEngine.js";
+import { findNearestDbtProjectDir, findNodeSourceFile } from "./projectDetection.js";
 import { findProfilesYmlPath, parseProfileTargets, readDbtProjectProfileName } from "./profilesYml.js";
 import type { LineageWebviewState } from "./panel/lineageHtml.js";
 import type { SettingsWebviewState } from "./sidebar/settingsHtml.js";
-import { buildDiffArgs, buildLineageArgs, locateExecutableAnywhere, readZhaoJson, runZhao } from "./zhaoCli.js";
+import { buildDiffArgs, buildLineageArgs, buildShowArgs, locateExecutableAnywhere, readZhaoJson, runZhao } from "./zhaoCli.js";
 import { parseFullLineageJson, parseRunMetadataJson, type RawFullLineageJson, type RawRunMetadataJson } from "./zhaoJson.js";
 
 const WORKSPACE_STATE_PROJECT_KEY = "zhao.activeProjectDir";
@@ -45,6 +46,20 @@ export class LineageController implements vscode.Disposable {
   private diffHighlight = false;
   private error: string | null = null;
   private refreshing = false;
+  /** Which of the panel's two tabs is showing -- "lineage" (the
+   * existing graph) or "preview" (the new data-preview tab, added
+   * alongside it in the same webview rather than a second panel
+   * registration -- see the spec's "single webview, two tabs" UI
+   * decision). */
+  private activeTab: "lineage" | "preview" = "lineage";
+  /** The node id the Preview tab is currently scoped to -- `null` before
+   * anything's ever been previewed this session. */
+  private previewFocus: string | null = null;
+  private previewLoading = false;
+  /** `null` before anything's ever been previewed, or right when a new
+   * preview starts (cleared immediately so a stale result never lingers
+   * on screen while the fresh one is still loading). */
+  private previewResult: PreviewResult | null = null;
   /** The `--target-path` isolation directory the last successful
    * compile used -- reused by a `compile: false` refresh (e.g. turning
    * diff-highlight on with no run metadata cached yet) instead of
@@ -331,6 +346,80 @@ export class LineageController implements vscode.Disposable {
     }
   }
 
+  // -- Preview tab --
+
+  setActiveTab(tab: "lineage" | "preview"): void {
+    this.activeTab = tab;
+    this.changeEmitter.fire();
+  }
+
+  /** Runs `zhao show` against `nodeId`, switching to the Preview tab and
+   * scoping it to that node -- the right-click "Preview Data" action's
+   * entry point, and also usable directly from the Preview tab's own
+   * node picker. Every call re-queries fresh: no caching of a previous
+   * result for the same node, matching the same "no silent stale state"
+   * principle already set for lineage's manual-refresh default. */
+  async previewNode(nodeId: string): Promise<void> {
+    const projectDir = this.activeProjectDir;
+    const node = this.fullLineage?.nodes.find((n) => n.id === nodeId);
+    if (!projectDir || !node) {
+      return;
+    }
+
+    this.activeTab = "preview";
+    this.previewFocus = nodeId;
+    this.previewLoading = true;
+    this.previewResult = null;
+    this.changeEmitter.fire();
+
+    const executable = this.executablePath;
+    if (!executable) {
+      this.previewLoading = false;
+      this.previewResult = { error: "zhao-cli was not found on PATH." };
+      this.changeEmitter.fire();
+      return;
+    }
+
+    try {
+      const args = buildShowArgs({
+        projectDir,
+        target: node.name,
+        profileTarget: this.activeTarget ?? undefined,
+      });
+      const result = await runZhao(executable, args);
+      this.previewResult = parsePreviewResult(result.code, result.stdout, result.stderr);
+    } catch (err) {
+      this.previewResult = { error: err instanceof Error ? err.message : String(err) };
+    } finally {
+      this.previewLoading = false;
+      this.changeEmitter.fire();
+    }
+  }
+
+  /** Right-click "Open Model File": jumps to `nodeId`'s `.sql`/`.csv`
+   * source. A source has none to open -- see
+   * `findNodeSourceFile`, which resolves `null` for that kind and for
+   * any model/seed whose file genuinely can't be found (reported via a
+   * warning, never a silent no-op). */
+  async openModelFile(nodeId: string): Promise<void> {
+    const projectDir = this.activeProjectDir;
+    const node = this.fullLineage?.nodes.find((n) => n.id === nodeId);
+    if (!projectDir || !node) {
+      return;
+    }
+    const filePath = findNodeSourceFile(projectDir, node.kind, node.name);
+    if (!filePath) {
+      await vscode.window.showWarningMessage(
+        node.kind === "source"
+          ? `${node.name} is a source -- it has no source file of its own to open.`
+          : `Could not find a source file for ${node.name}.`,
+      );
+      return;
+    }
+    const document = await vscode.workspace.openTextDocument(filePath);
+    await vscode.window.showTextDocument(document);
+  }
+
   // -- Rendered state for the two webviews --
 
   getLineageWebviewState(): LineageWebviewState {
@@ -357,6 +446,10 @@ export class LineageController implements vscode.Disposable {
       recommendedCommand: this.recommendedCommand,
       missingExecutable: this.executablePath === null,
       error: this.error,
+      activeTab: this.activeTab,
+      previewFocus: this.previewFocus,
+      previewLoading: this.previewLoading,
+      previewResult: this.previewResult,
     };
   }
 
