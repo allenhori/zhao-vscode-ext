@@ -16,9 +16,13 @@ import type { RenderableGraph } from "../engine/types.js";
 
 export interface LineageWebviewState {
   graph: RenderableGraph | null;
-  /** Every model/source in the whole project, for the focus dropdown --
-   * independent of `graph`, which is already depth/direction-scoped. */
-  allNodes: { id: string; name: string }[];
+  /** Every model/source/seed in the whole project, for the Lineage
+   * tab's focus dropdown and the Preview tab's node picker --
+   * independent of `graph`, which is already depth/direction-scoped.
+   * Carries `kind` so the Preview tab's picker can exclude sources
+   * (which have no query of their own to preview), the same rule the
+   * right-click menu already enforces. */
+  allNodes: { id: string; name: string; kind: "model" | "source" | "seed" }[];
   focus: string | null;
   nodeTerm: string;
   originTerm: string;
@@ -69,16 +73,38 @@ function renderPreviewBody(state: LineageWebviewState, previewFocusNode: { id: s
   }
   const header = columns.map((c) => `<th>${escapeHtml(c)}</th>`).join("");
   const body = rows
-    .map((row) => `<tr>${columns.map((c) => `<td>${escapeHtml(formatPreviewValue(row[c]))}</td>`).join("")}</tr>`)
+    .map(
+      (row) =>
+        `<tr>${columns
+          .map((c) => {
+            const cell = formatPreviewValue(row[c]);
+            return cell.isNull
+              ? `<td class="preview-null">${escapeHtml(cell.text)}</td>`
+              : `<td>${escapeHtml(cell.text)}</td>`;
+          })
+          .join("")}</tr>`,
+    )
     .join("");
   return `<div class="preview-table-wrap"><table class="preview-table"><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 
-function formatPreviewValue(value: unknown): string {
+/** Renders one preview cell's value -- distinguishing a genuine SQL
+ * NULL (`isNull: true`, rendered as the literal word "NULL" in a muted
+ * style) from an actual empty string (rendered as nothing, `isNull:
+ * false`), and from a non-finite number (`NaN`/`Infinity`/`-Infinity`,
+ * rendered as that literal word, not silently collapsed to the string
+ * `"null"` the way `JSON.stringify` would). A data-preview feature
+ * exists specifically to show what the warehouse actually returned --
+ * conflating any of these three into one blank/ambiguous cell would
+ * misdirect exactly the kind of investigation this feature supports. */
+function formatPreviewValue(value: unknown): { text: string; isNull: boolean } {
   if (value === null || value === undefined) {
-    return "";
+    return { text: "NULL", isNull: true };
   }
-  return typeof value === "string" ? value : JSON.stringify(value);
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    return { text: String(value), isNull: false };
+  }
+  return { text: typeof value === "string" ? value : JSON.stringify(value), isNull: false };
 }
 
 export function renderLineageHtml(state: LineageWebviewState): string {
@@ -98,8 +124,12 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   const nonce = randomUUID();
   const previewFocusNode = state.allNodes.find((n) => n.id === state.previewFocus) ?? null;
   const previewOptions =
-    `<option value="">(select a model/seed/source)</option>` +
-    [...state.allNodes]
+    `<option value="">(select a model/seed)</option>` +
+    // Sources are excluded here -- they have no query of their own to
+    // preview, the same rule the right-click menu already enforces by
+    // disabling "Preview Data" for one.
+    state.allNodes
+      .filter((n) => n.kind !== "source")
       .sort((a, b) => a.name.localeCompare(b.name))
       .map(
         (n) =>
@@ -164,6 +194,7 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   table.preview-table { border-collapse: collapse; font-size: 12px; white-space: nowrap; }
   table.preview-table th, table.preview-table td { border: 1px solid var(--vscode-panel-border); padding: 4px 8px; text-align: left; }
   table.preview-table th { background: var(--vscode-editorWidget-background); position: sticky; top: 0; }
+  table.preview-table td.preview-null { color: var(--vscode-descriptionForeground); font-style: italic; }
   .preview-empty { color: var(--vscode-descriptionForeground); font-size: 12px; padding: 8px 0; }
 </style>
 </head>
@@ -277,19 +308,16 @@ export function renderLineageHtml(state: LineageWebviewState): string {
     hideContextMenu();
   });
 
-  // Icon (by kind) + color token (by kind/materialization) -- mirrors
-  // ../engine/graphEngine.ts's iconFor/colorTokenFor exactly (duplicated
-  // here rather than imported, since this script runs as a plain
-  // webview blob with no module bundling of its own -- see the module
-  // doc comment's "not unit-tested" note; the decision itself is what's
-  // tested, in graphEngine.test.ts).
+  // The color-coding *decision* (kind/materialization -> token) lives
+  // only in ../engine/graphEngine.ts's colorTokenFor, tested there --
+  // each RenderableNode already carries the result as plain data
+  // (n.colorToken), so this script just reads it rather than
+  // re-deriving it with a second, hand-copied implementation that could
+  // drift out of sync. The icon lookup below is not a comparable
+  // decision: it's a fixed presentation mapping keyed directly off
+  // n.kind, which is already correct source data, not a derived
+  // judgment call the way materialization-to-color is.
   const NODE_ICONS = { model: "\\u{1F5C3}\\u{FE0F}", source: "\\u{1F50C}", seed: "\\u{1F331}" };
-  const RECOGNIZED_MATERIALIZATIONS = new Set(["table", "view", "incremental", "ephemeral"]);
-  function colorTokenFor(n) {
-    if (n.kind === "source") return "source";
-    if (n.kind === "seed") return "seed";
-    return n.materialization && RECOGNIZED_MATERIALIZATIONS.has(n.materialization) ? n.materialization : "other";
-  }
 
   // Dynamic node width: grows with the label's estimated width up to a
   // cap, then wraps onto a second line instead of continuing to grow or
@@ -302,7 +330,13 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   const MIN_BOX_WIDTH = 140;
   const MAX_BOX_WIDTH = 260;
   const AVG_CHAR_WIDTH = 6.5;
-  const HORIZONTAL_PADDING = 16;
+  // The label text starts at x=22 (not x=6) to leave room for the
+  // node's icon just to its left -- this padding has to cover that
+  // whole left margin plus a small right margin, not just a right
+  // margin alone, or the text runs past the box's right edge for any
+  // un-wrapped (single-line) label. 16 was correct back when text
+  // started at x=6; it must grow by the same 16px the icon shift added.
+  const HORIZONTAL_PADDING = 32;
   function layoutLabel(name) {
     const naturalWidth = name.length * AVG_CHAR_WIDTH + HORIZONTAL_PADDING;
     if (naturalWidth <= MAX_BOX_WIDTH) {
@@ -494,7 +528,7 @@ export function renderLineageHtml(state: LineageWebviewState): string {
       rect.setAttribute("width", String(pos.width));
       rect.setAttribute("height", String(pos.height));
       rect.setAttribute("rx", "4");
-      let cls = "node-box token-" + colorTokenFor(n);
+      let cls = "node-box token-" + n.colorToken;
       if (n.changed) cls += " changed";
       else if (n.reached) cls += " reached";
       rect.setAttribute("class", cls);

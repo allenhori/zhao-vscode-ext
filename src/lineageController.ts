@@ -60,6 +60,14 @@ export class LineageController implements vscode.Disposable {
    * preview starts (cleared immediately so a stale result never lingers
    * on screen while the fresh one is still loading). */
   private previewResult: PreviewResult | null = null;
+  /** Incremented at the start of every `previewNode` call -- an async
+   * `zhao show` invocation only commits its result if this still
+   * matches the generation it captured when it started. Without this,
+   * two overlapping `previewNode` calls (right-click node A, then
+   * quickly node B before A's slower query resolves) could let A's
+   * stale result land after B's, silently showing the wrong node's
+   * data with no indication anything raced. */
+  private previewRequestId = 0;
   /** The `--target-path` isolation directory the last successful
    * compile used -- reused by a `compile: false` refresh (e.g. turning
    * diff-highlight on with no run metadata cached yet) instead of
@@ -358,13 +366,23 @@ export class LineageController implements vscode.Disposable {
    * entry point, and also usable directly from the Preview tab's own
    * node picker. Every call re-queries fresh: no caching of a previous
    * result for the same node, matching the same "no silent stale state"
-   * principle already set for lineage's manual-refresh default. */
+   * principle already set for lineage's manual-refresh default.
+   *
+   * A source has no query of its own to preview -- same rule the
+   * right-click menu already enforces by disabling "Preview Data" for
+   * one, re-checked here too since the Preview tab's own node picker
+   * has no way to grey out a single `<option>`. */
   async previewNode(nodeId: string): Promise<void> {
     const projectDir = this.activeProjectDir;
     const node = this.fullLineage?.nodes.find((n) => n.id === nodeId);
-    if (!projectDir || !node) {
+    if (!projectDir || !node || node.kind === "source") {
       return;
     }
+
+    // Captured *before* any `await` -- see `previewRequestId`'s own
+    // comment. Any later-resolving call from an earlier click bails out
+    // in `finally` below rather than overwriting a newer one's result.
+    const requestId = ++this.previewRequestId;
 
     this.activeTab = "preview";
     this.previewFocus = nodeId;
@@ -374,26 +392,36 @@ export class LineageController implements vscode.Disposable {
 
     const executable = this.executablePath;
     if (!executable) {
-      this.previewLoading = false;
-      this.previewResult = { error: "zhao-cli was not found on PATH." };
-      this.changeEmitter.fire();
+      if (requestId === this.previewRequestId) {
+        this.previewLoading = false;
+        this.previewResult = { error: "zhao-cli was not found on PATH." };
+        this.changeEmitter.fire();
+      }
       return;
     }
 
+    let result: PreviewResult;
     try {
       const args = buildShowArgs({
         projectDir,
         target: node.name,
         profileTarget: this.activeTarget ?? undefined,
       });
-      const result = await runZhao(executable, args);
-      this.previewResult = parsePreviewResult(result.code, result.stdout, result.stderr);
+      const zhaoResult = await runZhao(executable, args);
+      result = parsePreviewResult(zhaoResult.code, zhaoResult.stdout, zhaoResult.stderr);
     } catch (err) {
-      this.previewResult = { error: err instanceof Error ? err.message : String(err) };
-    } finally {
-      this.previewLoading = false;
-      this.changeEmitter.fire();
+      result = { error: err instanceof Error ? err.message : String(err) };
     }
+
+    if (requestId !== this.previewRequestId) {
+      // A newer `previewNode` call has already started (and possibly
+      // already finished) since this one began -- discard this result
+      // rather than clobber whatever the newer call already showed.
+      return;
+    }
+    this.previewResult = result;
+    this.previewLoading = false;
+    this.changeEmitter.fire();
   }
 
   /** Right-click "Open Model File": jumps to `nodeId`'s `.sql`/`.csv`
@@ -435,7 +463,7 @@ export class LineageController implements vscode.Disposable {
 
     return {
       graph,
-      allNodes: this.fullLineage?.nodes.map((n) => ({ id: n.id, name: n.name })) ?? [],
+      allNodes: this.fullLineage?.nodes.map((n) => ({ id: n.id, name: n.name, kind: n.kind })) ?? [],
       focus: this.focus,
       nodeTerm: this.nodeTerm,
       originTerm: this.originTerm,

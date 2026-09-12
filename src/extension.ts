@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { LineageController } from "./lineageController.js";
 import { renderLineageHtml } from "./panel/lineageHtml.js";
-import { LineageViewProvider } from "./panel/lineageViewProvider.js";
+import { handleLineageWebviewMessage, LineageViewProvider } from "./panel/lineageViewProvider.js";
 import { SettingsViewProvider } from "./sidebar/settingsViewProvider.js";
 
 const RELEASES_URL = "https://github.com/allenhori/zhao-cli/releases";
@@ -35,46 +35,14 @@ export function activate(context: vscode.ExtensionContext): void {
       render();
       const subscription = controller.onDidChange(render);
       panel.onDidDispose(() => subscription.dispose());
-      panel.webview.onDidReceiveMessage((message: unknown) => {
-        // The pop-out tab shares the exact same message contract as the
-        // panel view -- reuse its handling by round-tripping through the
-        // same commands/setters `LineageViewProvider` uses. Duplicated
-        // here rather than shared because a `WebviewPanel` and a
-        // `WebviewView` are different VS Code types with no common
-        // "message handler" interface to factor out cheaply.
-        if (typeof message !== "object" || message === null || !("type" in message)) {
-          return;
-        }
-        const msg = message as Record<string, unknown>;
-        if (msg.type === "setFocus") {
-          controller.setFocus(typeof msg.focus === "string" ? msg.focus : null);
-        } else if (msg.type === "setDepth" && typeof msg.depth === "number") {
-          controller.setDepth(msg.depth);
-        } else if (
-          msg.type === "setDirection" &&
-          (msg.direction === "upstream" || msg.direction === "downstream" || msg.direction === "both")
-        ) {
-          controller.setDirection(msg.direction);
-        } else if (msg.type === "setColumnLevel") {
-          controller.setColumnLevel(Boolean(msg.value));
-        } else if (msg.type === "setDiffHighlight") {
-          void controller.setDiffHighlight(Boolean(msg.value));
-        } else if (msg.type === "refresh") {
-          void controller.refresh(true);
-        } else if (msg.type === "downloadCli") {
-          void vscode.env.openExternal(vscode.Uri.parse(RELEASES_URL));
-        } else if (msg.type === "copyCommand") {
-          void controller.copyRecommendedCommand();
-        } else if (msg.type === "runCommand") {
-          controller.runRecommendedCommandInTerminal();
-        } else if (msg.type === "setActiveTab" && (msg.tab === "lineage" || msg.tab === "preview")) {
-          controller.setActiveTab(msg.tab);
-        } else if (msg.type === "previewNode" && typeof msg.nodeId === "string") {
-          void controller.previewNode(msg.nodeId);
-        } else if (msg.type === "openModelFile" && typeof msg.nodeId === "string") {
-          void controller.openModelFile(msg.nodeId);
-        }
-      });
+      // The pop-out tab shares the exact same message contract as the
+      // docked panel view -- both dispatch through the one shared
+      // `handleLineageWebviewMessage`, so the two surfaces can't drift
+      // out of sync message-type by message-type the way hand-copied
+      // duplicates of this switch once did.
+      panel.webview.onDidReceiveMessage((message: unknown) =>
+        handleLineageWebviewMessage(message, controller),
+      );
     }),
   );
 

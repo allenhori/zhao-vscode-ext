@@ -5,6 +5,7 @@
 // here so it's directly unit-testable against static fixtures.
 
 import type {
+  ColorToken,
   FullLineageJson,
   GraphEngineConfig,
   NodeId,
@@ -43,6 +44,7 @@ export function buildRenderableGraph(
         name: n.name,
         package: n.package,
         materialization: n.materialization,
+        colorToken: colorTokenFor(n),
         changed,
         reached,
         depth: depthById.get(n.id) ?? null,
@@ -176,15 +178,6 @@ function computeTopologicalLayers(fullLineage: FullLineageJson): Map<NodeId, num
   return layer;
 }
 
-/** The icon a lineage node renders -- one per `kind`. Kept as its own
- * (currently identity) function rather than inlined at each render
- * call site, so icon selection is one tested decision, not a choice
- * duplicated between the panel webview and the pop-out editor-tab
- * webview. */
-export function iconFor(kind: RenderableNode["kind"]): RenderableNode["kind"] {
-  return kind;
-}
-
 /** The color-coding token a lineage node renders -- `"source"`/`"seed"`
  * for those kinds (each has its own fixed color, no materialization of
  * their own), otherwise the model's materialization
@@ -195,9 +188,13 @@ export function iconFor(kind: RenderableNode["kind"]): RenderableNode["kind"] {
  * color palette on its own; it always renders as the same neutral
  * fallback). A model with no `materialization` at all (shouldn't happen
  * given zhao-cli's own contract, but defensively handled rather than
- * assumed) also falls back to `"other"`. */
-export type ColorToken = "table" | "view" | "incremental" | "ephemeral" | "seed" | "source" | "other";
-
+ * assumed) also falls back to `"other"`.
+ *
+ * Called from `buildRenderableGraph` above so the result travels with
+ * each `RenderableNode` as plain data (`colorToken`) -- the webview
+ * reads that field directly rather than re-deriving this same decision
+ * with its own hand-copied implementation, which would otherwise be
+ * free to drift out of sync with this one, tested version. */
 const RECOGNIZED_MATERIALIZATIONS = new Set(["table", "view", "incremental", "ephemeral"]);
 
 export function colorTokenFor(node: Pick<RenderableNode, "kind" | "materialization">): ColorToken {
