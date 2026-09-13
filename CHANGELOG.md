@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.1
+
+- Removed the README's old static lineage screenshot -- the 0.6.0 demo GIF already shows the same
+  lineage graph plus the live data preview, so the static image was redundant.
+
 ## 0.6.0
 
 - Renamed to **zhao: dbt Companion** -- the "Lineage" name no longer covered what's actually here
