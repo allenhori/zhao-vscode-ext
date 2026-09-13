@@ -10,8 +10,6 @@ a terminal.
 
 ![Lineage graph and live data preview, from opening a model to seeing its query results](https://raw.githubusercontent.com/allenhori/zhao-vscode-ext/master/images/screenshots/lineage-preview-demo.gif)
 
-![Lineage panel, showing a whole-project dbt dependency graph laid out by dependency layer](https://raw.githubusercontent.com/allenhori/zhao-vscode-ext/master/images/screenshots/lineage-panel.png)
-
 ## What it does
 
 - **Lineage panel**, docked alongside your Terminal/Output/Debug Console tabs (poppable into a
