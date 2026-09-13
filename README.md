@@ -1,13 +1,16 @@
-# zhao: dbt Lineage for VS Code
+# zhao: dbt Companion
 
 A companion VS Code extension for [zhao-cli](https://github.com/allenhori/zhao-cli): a
-depth-scoped, diff-aware dbt lineage view docked right in your editor.
+depth-scoped, diff-aware dbt lineage view, a live data preview, and a compiled-code viewer,
+all docked right in your editor.
 
 Free and open source (Apache 2.0). No dbt Cloud connection required, no network calls of any
 kind -- it runs `zhao-cli` locally and reads the JSON it writes, the same way you'd run it from
 a terminal.
 
-![Lineage panel, showing a whole-project dbt dependency graph laid out by dependency layer](images/screenshots/lineage-panel.png)
+![Lineage graph and live data preview, from opening a model to seeing its query results](https://raw.githubusercontent.com/allenhori/zhao-vscode-ext/master/images/screenshots/lineage-preview-demo.gif)
+
+![Lineage panel, showing a whole-project dbt dependency graph laid out by dependency layer](https://raw.githubusercontent.com/allenhori/zhao-vscode-ext/master/images/screenshots/lineage-panel.png)
 
 ## What it does
 
@@ -24,6 +27,11 @@ a terminal.
   row cap is configurable via `zhao-cli`'s `zhao.yml`.
 - **Open Model File**, also from the right-click menu, jumps straight to a node's `.sql`/`.csv`
   source.
+- **View Compiled Code**, also from the right-click menu, opens a model's compiled SQL as a
+  read-only tab -- compiling first if nothing's been compiled yet this session. Locates the file
+  via the compiled manifest itself, not a hardcoded folder guess, so it works the same way on
+  classic dbt-core and dbt Fusion projects. Flags a possibly-stale result if the source has
+  changed since the last compile.
 - **Node icons and color-coding**: each node shows an icon for its kind (model/source/seed) and a
   color for its materialization (table/view/incremental/ephemeral), so a large graph is scannable
   at a glance instead of a wall of identical boxes.
@@ -46,6 +54,12 @@ a terminal.
   your project's real `target/` -- it can't collide with a `dbt run` you triggered yourself.
   Refreshing is an explicit action by default; auto-refresh-on-save is available as an opt-in
   setting.
+- **`zhao.yml` setup wizard**, run via a "Set Up zhao.yml" banner in the settings sidebar when
+  none is found: asks for `dbt-command` (the one setting that's actually required), auto-detects
+  your repo's default branch for `against`, and writes every other option as a commented,
+  self-documenting example rather than guessing values for you. Choose whether it's written at
+  the repo root (an org-wide default) or your current project's directory (an override layered
+  on top of the root, per `zhao-cli`'s own config-resolution rules).
 
 ## Requirements
 

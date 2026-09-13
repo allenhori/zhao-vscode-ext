@@ -1,8 +1,10 @@
 import * as vscode from "vscode";
 import { LineageController } from "./lineageController.js";
+import { COMPILED_CODE_SCHEME, CompiledCodeContentProvider } from "./panel/compiledCodeDocument.js";
 import { renderLineageHtml } from "./panel/lineageHtml.js";
 import { handleLineageWebviewMessage, LineageViewProvider } from "./panel/lineageViewProvider.js";
 import { SettingsViewProvider } from "./sidebar/settingsViewProvider.js";
+import { runZhaoYmlWizard } from "./zhaoYmlWizard.js";
 
 const RELEASES_URL = "https://github.com/allenhori/zhao-cli/releases";
 
@@ -18,10 +20,15 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider(COMPILED_CODE_SCHEME, new CompiledCodeContentProvider()),
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("zhao.refreshLineage", () => controller.refresh(true)),
     vscode.commands.registerCommand("zhao.downloadCli", () => {
       void vscode.env.openExternal(vscode.Uri.parse(RELEASES_URL));
     }),
+    vscode.commands.registerCommand("zhao.setupZhaoYml", () => runZhaoYmlWizard(controller)),
     vscode.commands.registerCommand("zhao.popOutLineage", () => {
       const panel = vscode.window.createWebviewPanel(
         "zhao.lineagePopOut",

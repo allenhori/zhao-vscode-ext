@@ -16,6 +16,11 @@ export interface SettingsWebviewState {
   activeProject: string | null;
   availableTargets: string[];
   activeTarget: string | null;
+  /** `true` when the active project has no `zhao.yml` of its own and
+   * none of its ancestors up to the repo root has one either -- drives
+   * the "Set Up zhao.yml" banner. `false` while no project is active at
+   * all, since there's nothing to set up yet. */
+  needsZhaoYmlSetup: boolean;
 }
 
 export function renderSettingsHtml(state: SettingsWebviewState): string {
@@ -46,6 +51,7 @@ export function renderSettingsHtml(state: SettingsWebviewState): string {
 </head>
 <body>
   ${state.missingExecutable ? `<div class="banner">zhao-cli was not found on PATH. <button id="download">Download zhao-cli</button></div>` : ""}
+  ${state.needsZhaoYmlSetup ? `<div class="banner">No zhao.yml found for this project. <button id="setupZhaoYml">Set Up zhao.yml</button></div>` : ""}
   <div class="field">
     <label for="project">Active dbt project</label>
     <button id="project" class="project-link" title="Click to change the active project">${escapeHtml(projectName)}</button>
@@ -59,6 +65,7 @@ export function renderSettingsHtml(state: SettingsWebviewState): string {
 (function () {
   const vscode = acquireVsCodeApi();
   document.getElementById("download")?.addEventListener("click", () => vscode.postMessage({ type: "downloadCli" }));
+  document.getElementById("setupZhaoYml")?.addEventListener("click", () => vscode.postMessage({ type: "setupZhaoYml" }));
   document.getElementById("project")?.addEventListener("click", () => vscode.postMessage({ type: "pickProject" }));
   document.getElementById("target")?.addEventListener("change", (e) =>
     vscode.postMessage({ type: "setTarget", target: e.target.value }));

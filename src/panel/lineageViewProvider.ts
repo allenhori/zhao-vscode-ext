@@ -73,6 +73,11 @@ export function handleLineageWebviewMessage(message: unknown, controller: Lineag
         void controller.openModelFile(msg.nodeId);
       }
       return;
+    case "viewCompiledCode":
+      if (typeof msg.nodeId === "string") {
+        void controller.viewCompiledCode(msg.nodeId);
+      }
+      return;
     default:
       return;
   }

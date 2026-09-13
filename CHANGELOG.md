@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.0
+
+- Renamed to **zhao: dbt Companion** -- the "Lineage" name no longer covered what's actually here
+  (Preview tab, right-click node actions). No change to the extension's identity: same publisher,
+  same Marketplace listing, existing installs update in place.
+- New **"View Compiled Code"** right-click action: opens a model's compiled SQL as a read-only
+  tab, compiling first if nothing's been compiled yet this session. Locates the file via the
+  compiled manifest itself rather than a hardcoded folder layout, so it works the same way on
+  classic dbt-core and dbt Fusion projects. Flags the result as possibly stale if the source has
+  changed since the last compile.
+- New **`zhao.yml` setup wizard**, reachable from a "Set Up zhao.yml" banner in the settings
+  sidebar when none is found (or via the Command Palette): asks only for `dbt-command`, the one
+  setting that's actually required, auto-detects your repo's default branch for `against`, and
+  writes every other option as a commented, explained example rather than guessing values for
+  you. Choose whether it's written at the repo root (an org-wide default) or your current
+  project's directory (an override layered on top of the root).
+- Fixed the README's lineage-panel screenshot using a relative path, which the VS Code
+  Marketplace can't resolve -- it's likely been broken on the published listing until now.
+
 ## 0.5.2
 
 - Switching "Preview Data" between two models before the first one finished previously left the
