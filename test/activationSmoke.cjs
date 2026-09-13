@@ -5,7 +5,7 @@
 // - runs to completion without throwing
 // - registers the two webview view providers package.json's
 //   `contributes.views` declares
-// - registers the three commands package.json's `contributes.commands`
+// - registers every command package.json's `contributes.commands`
 //   declares
 //
 // Run: node test/activationSmoke.cjs   (after `npm run build`)
@@ -51,8 +51,8 @@ assert.deepEqual(
 
 assert.deepEqual(
   [...fakeVscode.__test.registeredCommands].sort(),
-  ["zhao.downloadCli", "zhao.popOutLineage", "zhao.refreshLineage"].sort(),
-  "all three commands from package.json's contributes.commands should be registered",
+  ["zhao.downloadCli", "zhao.popOutLineage", "zhao.refreshLineage", "zhao.setupZhaoYml"].sort(),
+  "all commands from package.json's contributes.commands should be registered",
 );
 
 assert.ok(context.subscriptions.length > 0, "activate() should register disposables");

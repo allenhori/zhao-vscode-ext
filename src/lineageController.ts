@@ -8,15 +8,19 @@
 // testing decisions.
 
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, isAbsolute, join } from "node:path";
 import * as vscode from "vscode";
+import { resolveCompiledPath, type RawDbtManifest } from "./engine/compiledCode.js";
+import { isCompiledCodeStale } from "./engine/compiledCodeStaleness.js";
 import { buildRenderableGraph } from "./engine/graphEngine.js";
 import type { Direction, FullLineageJson, RunMetadataJson } from "./engine/types.js";
 import { parsePreviewResult, type PreviewResult } from "./engine/previewEngine.js";
 import { findNearestDbtProjectDir, findNodeSourceFile } from "./projectDetection.js";
 import { findProfilesYmlPath, parseProfileTargets, readDbtProjectProfileName } from "./profilesYml.js";
+import { findGitRootDir, hasZhaoYml } from "./zhaoYmlLocation.js";
+import { compiledCodeUri } from "./panel/compiledCodeDocument.js";
 import type { LineageWebviewState } from "./panel/lineageHtml.js";
 import type { SettingsWebviewState } from "./sidebar/settingsHtml.js";
 import { buildDiffArgs, buildLineageArgs, buildShowArgs, locateExecutableAnywhere, readZhaoJson, runZhao } from "./zhaoCli.js";
@@ -468,6 +472,79 @@ export class LineageController implements vscode.Disposable {
     await vscode.window.showTextDocument(document);
   }
 
+  /** Right-click "View Compiled Code": opens `nodeId`'s compiled SQL as
+   * a read-only virtual document. Compiles first (reusing the exact
+   * compile-if-`lastTargetPathDir`-is-`null` path `refresh` already
+   * uses) if nothing's been compiled yet this session; reuses an
+   * existing compiled session otherwise -- never a second, separate
+   * compile/temp-directory lifecycle. Resolves the file's location from
+   * the compiled manifest's own `compiled_path` field (see
+   * `./engine/compiledCode.ts`), never a hardcoded folder-layout guess,
+   * so this works the same way on dbt-core and dbt Fusion projects. A
+   * source has no compiled SQL of its own -- same rule `previewNode`
+   * enforces for "Preview Data". */
+  async viewCompiledCode(nodeId: string): Promise<void> {
+    const node = this.fullLineage?.nodes.find((n) => n.id === nodeId);
+    if (!node || node.kind === "source") {
+      return;
+    }
+
+    if (this.lastTargetPathDir === null) {
+      await this.refresh(true);
+    }
+    const targetPathDir = this.lastTargetPathDir;
+    if (!targetPathDir) {
+      // `refresh()` already surfaced its own error via the lineage
+      // panel's error banner -- nothing further to show here.
+      return;
+    }
+
+    let manifest: RawDbtManifest;
+    try {
+      manifest = readZhaoJson<RawDbtManifest>(join(targetPathDir, "manifest.json"));
+    } catch (err) {
+      await vscode.window.showWarningMessage(
+        `Could not read the compiled manifest: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+
+    const compiledPath = resolveCompiledPath(manifest, nodeId);
+    if (!compiledPath) {
+      await vscode.window.showWarningMessage(`No compiled code found for ${node.name} -- it may not have compiled successfully.`);
+      return;
+    }
+
+    // dbt's manifest.json records compiled_path relative to the
+    // effective target directory in most versions, but this isn't
+    // guaranteed identically across dbt-core and dbt Fusion -- rather
+    // than hardcode one assumption, try the isolated target-path
+    // directory first (the far more common case, since that's the
+    // effective target dbt just compiled into), then fall back to the
+    // project directory.
+    const absolutePath = isAbsolute(compiledPath)
+      ? compiledPath
+      : existsSync(join(targetPathDir, compiledPath))
+        ? join(targetPathDir, compiledPath)
+        : join(this.activeProjectDir ?? targetPathDir, compiledPath);
+
+    if (!existsSync(absolutePath)) {
+      await vscode.window.showWarningMessage(`Compiled code for ${node.name} was not found at ${absolutePath}.`);
+      return;
+    }
+
+    const document = await vscode.workspace.openTextDocument(compiledCodeUri(node.name, absolutePath));
+    await vscode.languages.setTextDocumentLanguage(document, "sql");
+    await vscode.window.showTextDocument(document, { preview: false });
+
+    const sourceFile = findNodeSourceFile(this.activeProjectDir ?? "", node.kind, node.name);
+    if (sourceFile && isCompiledCodeStale(statSync(absolutePath).mtimeMs, statSync(sourceFile).mtimeMs)) {
+      await vscode.window.showWarningMessage(
+        `This compiled code may be stale -- ${node.name}'s source has changed since the last compile. Run "zhao: Refresh Lineage" to recompile.`,
+      );
+    }
+  }
+
   // -- Rendered state for the two webviews --
 
   getLineageWebviewState(): LineageWebviewState {
@@ -528,12 +605,14 @@ export class LineageController implements vscode.Disposable {
   async getSettingsWebviewState(): Promise<SettingsWebviewState> {
     const projectDir = this.activeProjectDir;
     const availableTargets = projectDir ? await this.resolveAvailableTargets(projectDir) : [];
+    const needsZhaoYmlSetup = projectDir ? !hasZhaoYml(projectDir, findGitRootDir(projectDir)) : false;
 
     return {
       missingExecutable: this.executablePath === null,
       activeProject: projectDir,
       availableTargets,
       activeTarget: this.activeTarget,
+      needsZhaoYmlSetup,
     };
   }
 

@@ -75,6 +75,9 @@ const fakeVscode = {
         throw new Error("no such file (fake vscode.workspace.fs)");
       },
     },
+    registerTextDocumentContentProvider(_scheme, _provider) {
+      return { dispose() {} };
+    },
   },
   commands: {
     registerCommand(id, _cb) {

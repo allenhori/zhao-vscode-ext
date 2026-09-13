@@ -238,6 +238,7 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   <div id="contextMenu">
     <button id="ctxPreview">Preview Data</button>
     <button id="ctxOpenFile">Open Model File</button>
+    <button id="ctxViewCompiled">View Compiled Code</button>
   </div>
 <script nonce="${nonce}">
 (function () {
@@ -283,6 +284,7 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   const contextMenu = document.getElementById("contextMenu");
   const ctxPreviewBtn = document.getElementById("ctxPreview");
   const ctxOpenFileBtn = document.getElementById("ctxOpenFile");
+  const ctxViewCompiledBtn = document.getElementById("ctxViewCompiled");
   let contextMenuNodeId = null;
 
   function showContextMenu(x, y, node) {
@@ -290,8 +292,10 @@ export function renderLineageHtml(state: LineageWebviewState): string {
     const isSource = node.kind === "source";
     ctxPreviewBtn.disabled = isSource;
     ctxOpenFileBtn.disabled = isSource;
+    ctxViewCompiledBtn.disabled = isSource;
     ctxOpenFileBtn.title = isSource ? "A source has no file of its own to open" : "";
     ctxPreviewBtn.title = isSource ? "A source has no query of its own to preview" : "";
+    ctxViewCompiledBtn.title = isSource ? "A source has no compiled SQL of its own" : "";
     contextMenu.style.left = x + "px";
     contextMenu.style.top = y + "px";
     contextMenu.style.display = "flex";
@@ -309,6 +313,10 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   });
   ctxOpenFileBtn.addEventListener("click", () => {
     if (contextMenuNodeId) vscode.postMessage({ type: "openModelFile", nodeId: contextMenuNodeId });
+    hideContextMenu();
+  });
+  ctxViewCompiledBtn.addEventListener("click", () => {
+    if (contextMenuNodeId) vscode.postMessage({ type: "viewCompiledCode", nodeId: contextMenuNodeId });
     hideContextMenu();
   });
 
