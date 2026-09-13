@@ -8,7 +8,9 @@ Free and open source (Apache 2.0). No dbt Cloud connection required, no network 
 kind -- it runs `zhao-cli` locally and reads the JSON it writes, the same way you'd run it from
 a terminal.
 
-![Lineage panel, showing a whole-project dbt dependency graph laid out by dependency layer](images/screenshots/lineage-panel.png)
+![Lineage graph and live data preview, from opening a model to seeing its query results](https://raw.githubusercontent.com/allenhori/zhao-vscode-ext/master/images/screenshots/lineage-preview-demo.gif)
+
+![Lineage panel, showing a whole-project dbt dependency graph laid out by dependency layer](https://raw.githubusercontent.com/allenhori/zhao-vscode-ext/master/images/screenshots/lineage-panel.png)
 
 ## What it does
 
