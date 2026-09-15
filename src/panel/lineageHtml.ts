@@ -159,7 +159,8 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   .error { background: var(--vscode-inputValidation-errorBackground); border: 1px solid var(--vscode-inputValidation-errorBorder); padding: 8px; margin-bottom: 8px; white-space: pre-wrap; }
   .recommended-command { display: flex; gap: 8px; align-items: center; background: var(--vscode-editorWidget-background); border: 1px solid var(--vscode-panel-border); padding: 6px 8px; margin-bottom: 8px; font-size: 12px; }
   .recommended-command code { flex: 1; overflow-x: auto; white-space: pre; font-family: var(--vscode-editor-font-family); }
-  #graph { overflow: auto; border: 1px solid var(--vscode-panel-border); }
+  #graphContainer { overflow-x: auto; overflow-y: hidden; border: 1px solid var(--vscode-panel-border); }
+  #graph { display: block; }
   .node-box { stroke-width: 1.5; }
   /* Icon + color are always paired -- never color alone -- so the
    * distinction survives a greyscale screenshot or a colorblind viewer.
@@ -226,7 +227,7 @@ export function renderLineageHtml(state: LineageWebviewState): string {
       <label><input id="columnLevel" type="checkbox" ${state.columnLevel ? "checked" : ""} /> Column-level</label>
       <label><input id="diffHighlight" type="checkbox" ${state.diffHighlight ? "checked" : ""} /> Diff highlight</label>
     </div>
-    <svg id="graph" width="100%" height="480"></svg>
+    <div id="graphContainer"><svg id="graph" width="100%" height="480"></svg></div>
     <div id="info"></div>
   </div>
   <div id="panelPreview" class="tab-panel ${state.activeTab === "preview" ? "active" : ""}">
@@ -640,7 +641,15 @@ export function renderLineageHtml(state: LineageWebviewState): string {
     const maxColumnBottom = Math.max(
       ...[...positions.values()].map((pos) => pos.y + pos.height),
     );
+    const maxColumnRight = Math.max(
+      ...[...positions.values()].map((pos) => pos.x + pos.width),
+    );
     svg.setAttribute("height", String(Math.max(200, maxColumnBottom + 16)));
+    // Explicit pixel width (replacing the initial 100%) so content wider
+    // than the panel extends past #graphContainer's box instead of being
+    // squashed to fit -- #graphContainer's overflow-x:auto then supplies
+    // the horizontal scrollbar.
+    svg.setAttribute("width", String(Math.max(200, maxColumnRight + 16)));
   }
 
   render();
