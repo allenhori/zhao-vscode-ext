@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.2
+
+- Fixed the lineage graph not scrolling horizontally when it's wider than the panel -- it was
+  being squashed to fit instead.
+
 ## 0.6.1
 
 - Removed the README's old static lineage screenshot -- the 0.6.0 demo GIF already shows the same
