@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.3
+
+- Clicking a column in the lineage graph now traces its whole chain, upstream and downstream
+  across every layer in view, instead of only the directly-adjacent edges.
+- The traced chain is now unmistakable: vermillion (colour-blind safe), thicker, dashed and
+  animated lines, highlighted column rows, and everything else dimmed. Click the column again
+  to clear. Animation is turned off for users who prefer reduced motion.
+- Model icons now reflect materialization (table, view, incremental, ephemeral) instead of one
+  shared icon, so tables and views are distinguishable without relying on color.
+
 ## 0.6.2
 
 - Fixed the lineage graph not scrolling horizontally when it's wider than the panel -- it was
