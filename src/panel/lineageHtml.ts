@@ -188,7 +188,16 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   .column-divider { stroke: var(--vscode-panel-border); stroke-width: 1; opacity: 0.5; }
   .edge { stroke: var(--vscode-panel-border); stroke-width: 1; fill: none; }
   .column-edge { stroke: var(--vscode-charts-blue, #3794ff); stroke-width: 1; fill: none; opacity: 0.7; }
-  .column-edge.highlighted { stroke-width: 2; opacity: 1; }
+  /* Traced column chain: vermillion (#d55e00, Okabe-Ito -- distinct from blue for all common
+     colour-blindness types, and blue is already used by table nodes and plain column edges),
+     thicker, dashed and animated. Dashes + motion + a bold, outlined row mean the trace never
+     depends on hue alone. */
+  svg.tracing .column-edge:not(.highlighted) { opacity: 0.12; }
+  .column-edge.highlighted { stroke: #d55e00; stroke-width: 3; opacity: 1; stroke-dasharray: 8 5; animation: zhao-flow 0.8s linear infinite; }
+  @keyframes zhao-flow { to { stroke-dashoffset: -13; } }
+  @media (prefers-reduced-motion: reduce) { .column-edge.highlighted { animation: none; } }
+  .column-row.traced { fill: rgba(213, 94, 0, 0.28); stroke: #d55e00; stroke-width: 1.5; }
+  .column-row.origin { fill: rgba(213, 94, 0, 0.55); stroke: #d55e00; stroke-width: 2.5; }
   #info { margin-top: 8px; font-size: 12px; white-space: pre-wrap; }
   button { cursor: pointer; }
   #contextMenu { position: fixed; z-index: 10; display: none; flex-direction: column; background: var(--vscode-menu-background, var(--vscode-editorWidget-background)); border: 1px solid var(--vscode-panel-border); box-shadow: 0 2px 8px rgba(0,0,0,0.2); min-width: 160px; }
@@ -331,6 +340,13 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   // n.kind, which is already correct source data, not a derived
   // judgment call the way materialization-to-color is.
   const NODE_ICONS = { model: "\\u{1F5C3}\\u{FE0F}", source: "\\u{1F50C}", seed: "\\u{1F331}" };
+  // Models get an icon per materialization (the same colorToken that picks the box color), so
+  // table vs view is readable at a glance without relying on color: table = brick (solid, stored),
+  // view = eye (a live lens over other data), incremental = counter-clockwise arrows (appends),
+  // ephemeral = ghost (never materialized). Anything else falls back to the generic model icon.
+  const MATERIALIZATION_ICONS = {
+    table: "\\u{1F9F1}", view: "\\u{1F441}\\u{FE0F}", incremental: "\\u{1F504}", ephemeral: "\\u{1F47B}",
+  };
 
   // Dynamic node width: grows with the label's estimated width up to a
   // cap, then wraps onto a second line instead of continuing to grow or
@@ -552,7 +568,7 @@ export function renderLineageHtml(state: LineageWebviewState): string {
       icon.setAttribute("x", "6");
       icon.setAttribute("y", "18");
       icon.setAttribute("class", "node-icon");
-      icon.textContent = NODE_ICONS[n.kind] ?? "";
+      icon.textContent = (n.kind === "model" && MATERIALIZATION_ICONS[n.colorToken]) || NODE_ICONS[n.kind] || "";
       g.appendChild(icon);
 
       // One <tspan> per wrapped line (one or two, see layoutLabel) --
@@ -623,15 +639,50 @@ export function renderLineageHtml(state: LineageWebviewState): string {
         label.textContent = column;
         g.appendChild(label);
 
+        rowRect.dataset.node = n.id;
+        rowRect.dataset.column = column;
         rowRect.addEventListener("click", (event) => {
           event.stopPropagation();
-          for (const path of svg.querySelectorAll(".column-edge")) {
-            const touches =
-              (path.dataset.fromNode === n.id && path.dataset.fromColumn === column) ||
-              (path.dataset.toNode === n.id && path.dataset.toColumn === column);
-            path.classList.toggle("highlighted", touches);
+          // Trace the column's whole chain, not just its direct edges:
+          // walk column edges upstream and downstream (each direction
+          // separately, so two unrelated columns feeding the same
+          // descendant don't get merged into one trace) across every
+          // node currently in the scoped graph.
+          const key = (node, col) => node + "\\u0000" + col;
+          const paths = [...svg.querySelectorAll(".column-edge")];
+          const traced = new Set([key(n.id, column)]);
+          for (const dir of ["from", "to"]) {
+            const near = dir === "from" ? "to" : "from";
+            const seen = new Set([key(n.id, column)]);
+            const queue = [[n.id, column]];
+            while (queue.length > 0) {
+              const [node, col] = queue.shift();
+              for (const p of paths) {
+                if (p.dataset[near + "Node"] !== node || p.dataset[near + "Column"] !== col) continue;
+                const nextKey = key(p.dataset[dir + "Node"], p.dataset[dir + "Column"]);
+                p.dataset.trace = "1";
+                if (seen.has(nextKey)) continue;
+                seen.add(nextKey);
+                traced.add(nextKey);
+                queue.push([p.dataset[dir + "Node"], p.dataset[dir + "Column"]]);
+              }
+            }
           }
-          document.getElementById("info").textContent = n.name + "." + column;
+          // Re-clicking the same column clears the trace.
+          const alreadyOn = rowRect.classList.contains("origin");
+          for (const p of paths) {
+            const on = !alreadyOn && p.dataset.trace === "1";
+            p.classList.toggle("highlighted", on);
+            delete p.dataset.trace;
+          }
+          for (const row of svg.querySelectorAll(".column-row")) {
+            const rowKey = key(row.dataset.node, row.dataset.column);
+            row.classList.toggle("traced", !alreadyOn && traced.has(rowKey));
+            row.classList.toggle("origin", !alreadyOn && rowKey === key(n.id, column));
+          }
+          svg.classList.toggle("tracing", !alreadyOn);
+          document.getElementById("info").textContent = n.name + "." + column +
+            (alreadyOn ? "" : "\\n" + (traced.size - 1) + " connected column(s) in view");
         });
       });
 
