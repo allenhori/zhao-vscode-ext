@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.4
+
+- New extension icon, and a matching monochrome icon for the activity bar / sidebar.
+
 ## 0.6.3
 
 - Clicking a column in the lineage graph now traces its whole chain, upstream and downstream
