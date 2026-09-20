@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/allenhori/zhao-vscode-ext/master/images/icon.png" alt="zhao logo" width="128">
+</p>
+
 # zhao: dbt Companion
 
 A companion VS Code extension for [zhao-cli](https://github.com/allenhori/zhao-cli): a
