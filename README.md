@@ -63,6 +63,51 @@ a terminal.
   the repo root (an org-wide default) or your current project's directory (an override layered
   on top of the root, per `zhao-cli`'s own config-resolution rules).
 
+- **Environment variables for dbt**: many dbt projects need environment variables just to run --
+  `env_var('SF_ACCOUNT')` in `profiles.yml`, one project reused across many clients. Define them
+  in `.vscode/zhao.json` (see below) and the extension passes them to every `zhao`/dbt process it
+  runs. The zhao sidebar lets you add, edit and delete them, group them into named sets (one per
+  client or environment) and switch the active set with a dropdown. Secrets are masked (with an
+  eye toggle to reveal), and a warning tells you if a secrets file isn't git-ignored. Changing the
+  environment marks the lineage stale ("Environment variables changed") rather than recompiling on
+  its own.
+
+## Environment variables
+
+Two files under the workspace folder's `.vscode/`, sharing one schema (with validation and
+autocomplete built in):
+
+- `zhao.json`: safe to commit.
+- `zhao-secret.json`: same shape, layered on top, meant to be git-ignored. Ticking **Secret** in
+  the sidebar writes a variable here instead of `zhao.json`.
+
+```jsonc
+{
+  "envFile": ".env",                       // optional; a path or an array of paths
+  "env": { "DBT_THREADS": "4" },           // applies always
+  "sets": {                                // named sets; pick the active one in the sidebar
+    "client-a-prod": {
+      "envFile": ".env.client-a",          // optional, per set
+      "env": {
+        "SF_ACCOUNT": "acme",
+        "SF_PASSWORD": "${env:CLIENT_A_SF_PASSWORD}"  // passthrough: commit the name, not the value
+      }
+    }
+  }
+}
+```
+
+- `${env:NAME}` reads VS Code's own environment (a VS Code launched from the macOS Dock does not
+  see variables exported in your shell profile; one started with `code .` does). `${OTHER}` reads
+  another variable in the same configuration. Anything unresolved is flagged, not silently empty.
+- Precedence, highest first: the active set's `.env` files, base `.env` files, `zhao-secret.json`
+  active set, `zhao.json` active set, `zhao-secret.json` base, `zhao.json` base, then VS Code's own
+  environment. `.env` files win over JSON on purpose; a warning names any variable where they
+  disagree. `.env` files are shown read-only in the sidebar.
+- The sidebar also scans your project for `env_var()` calls and tells you which required
+  variables are missing from the active environment (a name with a default is optional).
+- The environment applies only to processes the extension starts, never your integrated terminals.
+
 ## Requirements
 
 [`zhao-cli`](https://github.com/allenhori/zhao-cli) on your `PATH` (or pointed at via the

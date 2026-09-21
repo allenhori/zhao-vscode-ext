@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "zhao environment variables",
+  "description": "Environment variables the zhao extension passes to every zhao/dbt process it runs.",
+  "type": "object",
+  "additionalProperties": false,
+  "definitions": {
+    "variables": {
+      "type": "object",
+      "description": "Variable name to value. Values may reference ${env:NAME} (from VS Code's own environment) or ${OTHER} (another variable here).",
+      "additionalProperties": { "type": "string" }
+    },
+    "envFile": {
+      "description": "One or more .env files, relative to the workspace folder. Later entries win. Values in .env files take precedence over values in this JSON.",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "array", "items": { "type": "string" } }
+      ]
+    }
+  },
+  "properties": {
+    "env": { "$ref": "#/definitions/variables" },
+    "envFile": { "$ref": "#/definitions/envFile" },
+    "sets": {
+      "type": "object",
+      "description": "Named sets (e.g. one per client or environment). The active set, chosen in the zhao sidebar, is layered over the base.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "env": { "$ref": "#/definitions/variables" },
+          "envFile": { "$ref": "#/definitions/envFile" }
+        }
+      }
+    }
+  }
+}

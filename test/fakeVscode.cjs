@@ -58,7 +58,36 @@ const fakeVscode = {
       return panel;
     },
   },
+  RelativePattern: class RelativePattern {
+    constructor(base, pattern) {
+      this.base = base;
+      this.pattern = pattern;
+    }
+  },
+  Range: class Range {
+    constructor(...args) {
+      this.args = args;
+    }
+  },
+  Diagnostic: class Diagnostic {
+    constructor(range, message, severity) {
+      this.range = range;
+      this.message = message;
+      this.severity = severity;
+    }
+  },
+  DiagnosticSeverity: { Error: 0, Warning: 1 },
+  languages: {
+    createDiagnosticCollection() {
+      return { clear() {}, set() {}, dispose() {} };
+    },
+  },
   workspace: {
+    workspaceFolders: undefined,
+    getWorkspaceFolder: () => undefined,
+    createFileSystemWatcher() {
+      return { onDidChange() {}, onDidCreate() {}, onDidDelete() {}, dispose() {} };
+    },
     getConfiguration(_section) {
       return {
         get(key, fallback) {

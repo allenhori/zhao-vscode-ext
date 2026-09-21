@@ -4,6 +4,8 @@
 // unit-tested -- VS Code-webview-bound, per the spec's testing decisions.
 
 import { randomUUID } from "node:crypto";
+import type { EnvSidebarState } from "../envController.js";
+import { ENV_SECTION_CSS, ENV_SECTION_SCRIPT, renderEnvSection } from "./envSectionHtml.js";
 
 export interface SettingsWebviewState {
   missingExecutable: boolean;
@@ -21,6 +23,8 @@ export interface SettingsWebviewState {
    * the "Set Up zhao.yml" banner. `false` while no project is active at
    * all, since there's nothing to set up yet. */
   needsZhaoYmlSetup: boolean;
+  /** The environment-variable section's data. */
+  env: EnvSidebarState;
 }
 
 export function renderSettingsHtml(state: SettingsWebviewState): string {
@@ -47,6 +51,7 @@ export function renderSettingsHtml(state: SettingsWebviewState): string {
   .project-link { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: none; padding: 4px 0; color: var(--vscode-textLink-foreground); font-size: 13px; text-align: left; }
   .project-link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
   .project-path { opacity: 0.6; font-size: 11px; margin-top: 2px; word-break: break-all; }
+${ENV_SECTION_CSS}
 </style>
 </head>
 <body>
@@ -61,6 +66,7 @@ export function renderSettingsHtml(state: SettingsWebviewState): string {
     <label for="target">Active target</label>
     <select id="target">${targetOptions || "<option>(no profiles.yml found)</option>"}</select>
   </div>
+  ${renderEnvSection(state.env)}
 <script nonce="${nonce}">
 (function () {
   const vscode = acquireVsCodeApi();
@@ -69,6 +75,7 @@ export function renderSettingsHtml(state: SettingsWebviewState): string {
   document.getElementById("project")?.addEventListener("click", () => vscode.postMessage({ type: "pickProject" }));
   document.getElementById("target")?.addEventListener("change", (e) =>
     vscode.postMessage({ type: "setTarget", target: e.target.value }));
+${ENV_SECTION_SCRIPT}
 })();
 </script>
 </body>

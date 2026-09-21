@@ -271,10 +271,23 @@ export interface RunResult {
  * background: wasted compute, and for an OAuth-gated warehouse target
  * (e.g. Databricks), two concurrent invocations can contend over a
  * shared local resource (the OAuth callback listener), which is a
- * real, observed way for the second one to hang. */
-export function runZhao(executable: string, args: string[], signal?: AbortSignal): Promise<RunResult> {
+ * real, observed way for the second one to hang.
+ *
+ * `env`, if given, is the user's configured environment (see
+ * `./envConfig.ts`) -- dbt itself needs these for `env_var()`, and `zhao`
+ * passes its own environment straight through to the dbt it launches. */
+export function runZhao(
+  executable: string,
+  args: string[],
+  signal?: AbortSignal,
+  env?: Record<string, string>,
+): Promise<RunResult> {
   return new Promise((resolve) => {
-    execFile(executable, args, { maxBuffer: 64 * 1024 * 1024, signal }, (error, stdout, stderr) => {
+    // Configured variables layer over the real process environment (their
+    // lowest-precedence source), so anything not configured still flows
+    // through untouched.
+    const childEnv = env ? { ...process.env, ...env } : process.env;
+    execFile(executable, args, { maxBuffer: 64 * 1024 * 1024, signal, env: childEnv }, (error, stdout, stderr) => {
       const code = error && "code" in error && typeof error.code === "number" ? error.code : error ? 1 : 0;
       resolve({ code, stdout, stderr });
     });

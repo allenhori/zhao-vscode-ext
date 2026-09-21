@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.5
+
+- Environment variables for dbt: dbt projects that need variables to run (`env_var()` in
+  `profiles.yml`, one project reused across clients or environments) now work. Define variables in
+  `.vscode/zhao.json`, optionally pointing at `.env` files, and the extension passes them to every
+  `zhao`/dbt process it runs. Includes named sets with an active-set dropdown, a secrets file
+  (`zhao-secret.json`) with masked values, `${env:NAME}` passthrough, and JSON validation.
+- The zhao sidebar manages the variables: add, edit, delete, rename sets, a per-variable source,
+  and a note when a value overrides another. It also flags required `env_var()` names that are
+  missing, and warns when a secrets file isn't git-ignored (with a one-click fix).
+- Changing the environment marks the lineage stale with a Refresh button; it never recompiles on
+  its own.
+- The profile lookup for the target dropdown now honours a `DBT_PROFILES_DIR` set in the
+  configured environment.
+
 ## 0.6.4
 
 - New extension icon, and a matching monochrome icon for the activity bar / sidebar.
