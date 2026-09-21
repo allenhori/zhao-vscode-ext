@@ -64,13 +64,15 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
         return;
       case "envSaveVariable":
         if (typeof msg.name === "string" && typeof msg.value === "string") {
-          this.controller.env.saveVariable({
-            name: msg.name,
-            value: msg.value,
-            secret: Boolean(msg.secret),
-            set: typeof msg.set === "string" ? msg.set : null,
-            originalName: typeof msg.originalName === "string" ? msg.originalName : undefined,
-          });
+          this.reportError(
+            this.controller.env.saveVariable({
+              name: msg.name,
+              value: msg.value,
+              secret: Boolean(msg.secret),
+              set: typeof msg.set === "string" ? msg.set : null,
+              originalName: typeof msg.originalName === "string" ? msg.originalName : undefined,
+            }),
+          );
         }
         return;
       case "envDeleteVariable":
@@ -85,7 +87,7 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
         return;
       case "envAddGitignore":
         if (typeof msg.file === "string") {
-          this.controller.env.addToGitignore(msg.file);
+          void this.controller.env.addToGitignore(msg.file);
         }
         return;
       default:
@@ -99,15 +101,24 @@ export class SettingsViewProvider implements vscode.WebviewViewProvider {
       validateInput: (value) => (value.trim().length === 0 ? "A name is required." : undefined),
     });
     if (name) {
-      this.controller.env.createSet(name);
-      await this.controller.env.setActiveSet(name.trim());
+      const error = this.controller.env.createSet(name);
+      this.reportError(error);
+      if (error === null) {
+        await this.controller.env.setActiveSet(name.trim());
+      }
     }
   }
 
   private async promptRenameSet(current: string): Promise<void> {
     const name = await vscode.window.showInputBox({ prompt: `Rename set "${current}" to`, value: current });
     if (name) {
-      await this.controller.env.renameActiveOrNamedSet(current, name);
+      this.reportError(await this.controller.env.renameSet(current, name));
+    }
+  }
+
+  private reportError(message: string | null): void {
+    if (message) {
+      void vscode.window.showErrorMessage(message);
     }
   }
 

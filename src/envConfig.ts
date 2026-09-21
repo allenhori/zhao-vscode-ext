@@ -37,7 +37,12 @@ export interface ShadowedValue {
 
 export interface ResolvedVariable {
   name: string;
+  /** The expanded value the process will see. */
   value: string;
+  /** The value exactly as configured (e.g. `${env:DB_PASSWORD}`) -- what
+   * the sidebar shows and edits, so a passthrough reference is never
+   * replaced by the secret it points at. */
+  raw: string;
   source: EnvSource;
   /** `true` for values that live in `zhao-secret.json`. */
   secret: boolean;
@@ -196,9 +201,16 @@ export function resolveEnv(inputs: EnvInputs): ResolvedEnv {
       });
     }
     const expanded = expansions.get(name) ?? null;
+    if (winner.source.kind === "zhao.json" && isSecretName(name) && !REFERENCE_TEST.test(winner.value)) {
+      diagnostics.push({
+        severity: "warning",
+        message: `${name} looks like a secret but is stored as a literal in zhao.json; put it in zhao-secret.json or use a \${env:...} reference.`,
+      });
+    }
     variables.push({
       name,
       value: expanded ?? winner.value,
+      raw: winner.value,
       source: winner.source,
       secret: winner.source.kind === "zhao-secret.json" || isSecretName(name),
       shadows,
@@ -213,6 +225,7 @@ export function resolveEnv(inputs: EnvInputs): ResolvedEnv {
   return { env, variables, availableSets, envFiles, diagnostics };
 }
 
+const REFERENCE_TEST = /\$\{(env:)?[A-Za-z_][A-Za-z0-9_]*\}/;
 const REFERENCE = /\$\{(env:)?([A-Za-z_][A-Za-z0-9_]*)\}/g;
 
 /** Expands `${env:NAME}` (from the process env) and `${NAME}` (from

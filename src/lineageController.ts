@@ -321,6 +321,7 @@ export class LineageController implements vscode.Disposable {
       // compile's own `targetPathDir`, since a brand-new, never-
       // compiled-into directory would have no manifest for `zhao
       // lineage` to read at all.
+      const envRevision = this.env.currentRevision;
       const actuallyCompile = compile || this.lastTargetPathDir === null;
       const targetPathDir = actuallyCompile
         ? join(tmpdir(), `zhao-vscode-ext-${randomUUID()}`)
@@ -343,7 +344,7 @@ export class LineageController implements vscode.Disposable {
       }
       this.lastTargetPathDir = targetPathDir;
       if (actuallyCompile) {
-        this.env.clearStale();
+        this.env.clearStale(envRevision);
       }
 
       const fullLineagePath = join(projectDir, "target", "zhao", "full_lineage.json");

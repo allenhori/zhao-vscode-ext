@@ -337,3 +337,34 @@ describe("isSecretName", () => {
     ]);
   });
 });
+
+describe("resolveEnv: raw values and literal secrets", () => {
+  it("keeps the value exactly as configured, alongside the expanded one", () => {
+    const resolved = resolveEnv(
+      inputs({ zhaoJson: '{ "env": { "PW": "${env:DB_PASSWORD}" } }', processEnv: { DB_PASSWORD: "hunter2" } }),
+    );
+
+    expect(resolved.variables[0]).toMatchObject({ value: "hunter2", raw: "${env:DB_PASSWORD}" });
+  });
+
+  it("warns, without blocking, about a secret-looking literal in zhao.json", () => {
+    const resolved = resolveEnv(inputs({ zhaoJson: '{ "env": { "SF_PASSWORD": "hunter2" } }' }));
+
+    expect(resolved.env.SF_PASSWORD).toBe("hunter2");
+    expect(resolved.diagnostics).toEqual([
+      { severity: "warning", message: expect.stringMatching(/SF_PASSWORD.*zhao-secret\.json/) },
+    ]);
+  });
+
+  it("does not warn for a passthrough reference, the secret file, or a non-secret name", () => {
+    const resolved = resolveEnv(
+      inputs({
+        zhaoJson: '{ "env": { "SF_PASSWORD": "${env:SF_PW}", "SF_ACCOUNT": "acme" } }',
+        secretJson: '{ "env": { "API_TOKEN": "abc" } }',
+        processEnv: { SF_PW: "x" },
+      }),
+    );
+
+    expect(resolved.diagnostics).toEqual([]);
+  });
+});

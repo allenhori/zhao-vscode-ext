@@ -70,3 +70,11 @@ export function renameSet(text: string, from: string, to: string): string {
 export function deleteSet(text: string, name: string): string {
   return has(text, ["sets", name]) ? edit(text, ["sets", name], undefined) : text;
 }
+
+export function hasVariable(text: string | null, set: string | null, name: string): boolean {
+  return text !== null && has(text, [...envPath(set), name]);
+}
+
+export function hasSet(text: string | null, name: string): boolean {
+  return text !== null && has(text, ["sets", name]);
+}

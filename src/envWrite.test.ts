@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parse } from "jsonc-parser";
-import { addSet, deleteSet, deleteVariable, renameSet, renameVariable, setVariable } from "./envWrite.js";
+import { addSet, deleteSet, deleteVariable, hasSet, hasVariable, renameSet, renameVariable, setVariable } from "./envWrite.js";
 
 const read = (text: string): unknown => parse(text);
 
@@ -86,5 +86,27 @@ describe("sets", () => {
     const text = '{ "sets": { "a": { "env": {} }, "b": { "env": {} } } }';
 
     expect(read(deleteSet(text, "a"))).toEqual({ sets: { b: { env: {} } } });
+  });
+});
+
+describe("existence checks", () => {
+  const text = '{ "env": { "A": "1" }, "sets": { "client-a": { "env": { "X": "2" } } } }';
+
+  it("finds variables in the base and in a set", () => {
+    expect(hasVariable(text, null, "A")).toBe(true);
+    expect(hasVariable(text, "client-a", "X")).toBe(true);
+  });
+
+  it("does not confuse scopes or names", () => {
+    expect(hasVariable(text, null, "X")).toBe(false);
+    expect(hasVariable(text, "client-a", "A")).toBe(false);
+    expect(hasVariable(text, "nope", "A")).toBe(false);
+    expect(hasVariable(null, null, "A")).toBe(false);
+  });
+
+  it("finds sets", () => {
+    expect(hasSet(text, "client-a")).toBe(true);
+    expect(hasSet(text, "client-b")).toBe(false);
+    expect(hasSet(null, "client-a")).toBe(false);
   });
 });

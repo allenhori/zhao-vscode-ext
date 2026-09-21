@@ -12,6 +12,8 @@ export function activate(context: vscode.ExtensionContext): void {
   const controller = new LineageController(context);
   context.subscriptions.push(controller);
 
+  controller.env.start();
+
   const lineageProvider = new LineageViewProvider(controller);
   const settingsProvider = new SettingsViewProvider(controller);
   context.subscriptions.push(

@@ -7,7 +7,7 @@
 
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import * as vscode from "vscode";
 import { resolveEnv, type EnvDiagnostic, type ResolvedEnv } from "./envConfig.js";
 import { addToGitignore, checkGitStatus } from "./envGit.js";
@@ -17,6 +17,8 @@ import {
   addSet,
   deleteSet,
   deleteVariable,
+  hasSet,
+  hasVariable,
   renameSet,
   setVariable,
 } from "./envWrite.js";
@@ -72,6 +74,9 @@ export interface EnvSidebarState {
 
 export class EnvController implements vscode.Disposable {
   private stale = false;
+  /** Bumped by every real change to the environment, so a compile that
+   * started before a change can't mark that change as already applied. */
+  private revision = 0;
   private readonly changeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changeEmitter.event;
   private readonly diagnostics = vscode.languages.createDiagnosticCollection("zhao-env");
@@ -120,11 +125,7 @@ export class EnvController implements vscode.Disposable {
   // -- Active set --
 
   get activeSet(): string | null {
-    const stored = this.context.workspaceState.get<string | null>(WORKSPACE_STATE_ENV_SET_KEY, null);
-    if (stored === null) {
-      return null;
-    }
-    return this.resolveWith(stored)?.availableSets.includes(stored) ? stored : null;
+    return this.resolveValidated().activeSet;
   }
 
   async setActiveSet(name: string | null): Promise<void> {
@@ -139,18 +140,24 @@ export class EnvController implements vscode.Disposable {
     return dir ? resolveEnv(loadEnvInputs(dir, activeSet)) : null;
   }
 
+  /** Resolves with the stored active set, falling back to no set when
+   * that set no longer exists (deleted by hand) -- so what the sidebar
+   * shows and what dbt receives always agree. */
+  private resolveValidated(): { resolved: ResolvedEnv; activeSet: string | null } {
+    const stored = this.context.workspaceState.get<string | null>(WORKSPACE_STATE_ENV_SET_KEY, null);
+    const withStored = this.resolveWith(stored);
+    if (withStored === null) {
+      return { resolved: { env: {}, variables: [], availableSets: [], envFiles: [], diagnostics: [] }, activeSet: null };
+    }
+    if (stored !== null && !withStored.availableSets.includes(stored)) {
+      return { resolved: this.resolveWith(null) ?? withStored, activeSet: null };
+    }
+    return { resolved: withStored, activeSet: stored };
+  }
+
   /** The current resolved environment (no config -> empty). */
   resolve(): ResolvedEnv {
-    const stored = this.context.workspaceState.get<string | null>(WORKSPACE_STATE_ENV_SET_KEY, null);
-    return (
-      this.resolveWith(stored) ?? {
-        env: {},
-        variables: [],
-        availableSets: [],
-        envFiles: [],
-        diagnostics: [],
-      }
-    );
+    return this.resolveValidated().resolved;
   }
 
   /** The variables to hand to every spawned `zhao` process. */
@@ -170,8 +177,17 @@ export class EnvController implements vscode.Disposable {
     return this.stale;
   }
 
-  clearStale(): void {
-    this.stale = false;
+  /** The current change counter -- capture it before a compile starts. */
+  get currentRevision(): number {
+    return this.revision;
+  }
+
+  /** Clears the stale flag after a compile, unless the environment
+   * changed while it was running (that change is not yet applied). */
+  clearStale(compiledRevision: number): void {
+    if (compiledRevision === this.revision) {
+      this.stale = false;
+    }
   }
 
   /** Label for the panel's "active env" indicator, or `null` when there
@@ -189,12 +205,26 @@ export class EnvController implements vscode.Disposable {
    * Problems panel, and mark an already-compiled lineage stale -- never
    * recompile on its own (see ADR 0012). */
   changed(): void {
+    this.revision += 1;
     if (this.hasLineage()) {
       this.stale = true;
     }
+    this.reload();
+  }
+
+  /** Re-reads everything for display without touching the stale flag --
+   * for actions (opening a file, editing `.gitignore`) that don't change
+   * any variable's value. */
+  private reload(): void {
     this.syncEnvFileWatchers();
     void this.refreshDiagnostics();
     this.changeEmitter.fire();
+  }
+
+  /** Starts watching and publishes Problems-panel diagnostics right away,
+   * rather than waiting for the sidebar to first render. */
+  start(): void {
+    this.reload();
   }
 
   private syncEnvFileWatchers(): void {
@@ -247,7 +277,7 @@ export class EnvController implements vscode.Disposable {
       const fromEnvFile = variable.source.kind === "env-file";
       return {
         name: variable.name,
-        value: variable.value,
+        value: variable.raw,
         secret: variable.secret,
         unresolved: variable.unresolved,
         sourceLabel: fromEnvFile
@@ -397,14 +427,17 @@ export class EnvController implements vscode.Disposable {
     secret: boolean;
     set: string | null;
     originalName?: string;
-  }): void {
+  }): string | null {
     const dir = this.workspaceDir;
     const name = input.name.trim();
     if (!dir || name.length === 0) {
-      return;
+      return null;
     }
     let { zhao, secret } = this.readFiles(dir);
     const rename = input.originalName !== undefined && input.originalName !== name;
+    if (rename && (hasVariable(zhao, input.set, name) || hasVariable(secret, input.set, name))) {
+      return `${name} already exists${input.set ? ` in ${input.set}` : ""}; pick another name.`;
+    }
     if (rename && zhao !== null) {
       zhao = deleteVariable(zhao, input.set, input.originalName as string);
     }
@@ -429,6 +462,7 @@ export class EnvController implements vscode.Disposable {
       this.write(dir, SECRET_JSON, secret);
     }
     this.changed();
+    return null;
   }
 
   removeVariable(file: typeof ZHAO_JSON | typeof SECRET_JSON, set: string | null, name: string): void {
@@ -441,23 +475,34 @@ export class EnvController implements vscode.Disposable {
     this.changed();
   }
 
-  createSet(name: string): void {
+  /** Creates an empty set; returns an error message if the name is taken. */
+  createSet(name: string): string | null {
     const dir = this.workspaceDir;
     const trimmed = name.trim();
     if (!dir || trimmed.length === 0) {
-      return;
+      return null;
     }
-    this.write(dir, ZHAO_JSON, addSet(readTextIfExists(configFilePath(dir, ZHAO_JSON)), trimmed));
+    const { zhao, secret } = this.readFiles(dir);
+    if (hasSet(zhao, trimmed) || hasSet(secret, trimmed)) {
+      return `A set named ${trimmed} already exists.`;
+    }
+    this.write(dir, ZHAO_JSON, addSet(zhao, trimmed));
     this.changed();
+    return null;
   }
 
-  async renameActiveOrNamedSet(from: string, to: string): Promise<void> {
+  /** Renames a set in both files; returns an error message if the new
+   * name is taken. */
+  async renameSet(from: string, to: string): Promise<string | null> {
     const dir = this.workspaceDir;
     const target = to.trim();
     if (!dir || target.length === 0 || target === from) {
-      return;
+      return null;
     }
     const { zhao, secret } = this.readFiles(dir);
+    if (hasSet(zhao, target) || hasSet(secret, target)) {
+      return `A set named ${target} already exists.`;
+    }
     if (zhao !== null) {
       this.write(dir, ZHAO_JSON, renameSet(zhao, from, target));
     }
@@ -468,6 +513,7 @@ export class EnvController implements vscode.Disposable {
       await this.context.workspaceState.update(WORKSPACE_STATE_ENV_SET_KEY, target);
     }
     this.changed();
+    return null;
   }
 
   async removeSet(name: string): Promise<void> {
@@ -488,31 +534,45 @@ export class EnvController implements vscode.Disposable {
     this.changed();
   }
 
-  /** Opens a config file or `.env` file in the editor (creating an empty
-   * `zhao.json` first when asked for one that doesn't exist yet). */
+  /** Opens one of the extension's own files: `zhao.json`,
+   * `zhao-secret.json` (created empty when asked for and absent), or a
+   * `.env` file the configuration actually references -- never an
+   * arbitrary path a message happens to carry. */
   async openFile(target: string): Promise<void> {
     const dir = this.workspaceDir;
     if (!dir) {
       return;
     }
-    const path =
-      target === ZHAO_JSON || target === SECRET_JSON
-        ? configFilePath(dir, target)
-        : join(dir, target);
-    if (!existsSync(path) && (target === ZHAO_JSON || target === SECRET_JSON)) {
-      writeConfigText(path, "{}\n");
+    let path: string;
+    if (target === ZHAO_JSON || target === SECRET_JSON) {
+      path = configFilePath(dir, target);
+      if (!existsSync(path)) {
+        writeConfigText(path, "{}\n");
+        this.reload();
+      }
+    } else {
+      const absolute = isAbsolute(target) ? target : join(dir, target);
+      if (!this.resolve().envFiles.includes(absolute)) {
+        return;
+      }
+      path = absolute;
     }
     await vscode.window.showTextDocument(vscode.Uri.file(path));
   }
 
   /** The one-click fix behind the "not git-ignored" warning -- never run
-   * without the user asking for it. */
-  addToGitignore(file: string): void {
+   * without the user asking for it, and only for a file the warning
+   * itself named. */
+  async addToGitignore(file: string): Promise<void> {
     const dir = this.workspaceDir;
     if (!dir) {
       return;
     }
+    const warned = await this.computeGitWarnings(dir, this.resolve());
+    if (!warned.some((warning) => warning.kind === "notIgnored" && warning.file === file)) {
+      return;
+    }
     addToGitignore(dir, file.split("\\").join("/"));
-    this.changed();
+    this.reload();
   }
 }
