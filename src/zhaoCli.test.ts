@@ -256,3 +256,23 @@ describe("runZhao", () => {
     expect(result.code).not.toBe(0);
   }, 5000);
 });
+
+describe("runZhao environment", () => {
+  it("passes extra environment variables to the child on top of the process environment", async () => {
+    const result = await runZhao(
+      "/bin/sh",
+      ["-c", 'printf "%s|%s" "$ZHAO_TEST_EXTRA" "$HOME"'],
+      undefined,
+      { ZHAO_TEST_EXTRA: "from-config" },
+    );
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toBe(`from-config|${process.env.HOME}`);
+  });
+
+  it("lets configured variables override the process environment", async () => {
+    const result = await runZhao("/bin/sh", ["-c", 'printf "%s" "$HOME"'], undefined, { HOME: "/overridden" });
+
+    expect(result.stdout).toBe("/overridden");
+  });
+});

@@ -16,6 +16,9 @@ const options = {
   external: ["vscode"],
   format: "cjs",
   platform: "node",
+  // `jsonc-parser`'s default (UMD) entry loads its own files through a
+  // dynamic `require` esbuild can't follow -- its ESM build bundles cleanly.
+  mainFields: ["module", "main"],
   target: "node20",
   sourcemap: true,
   logLevel: "info",

@@ -51,6 +51,12 @@ export interface LineageWebviewState {
   previewLoading: boolean;
   /** `null` before anything's been previewed, or while one is loading. */
   previewResult: PreviewResult | null;
+  /** `true` when the environment variables changed after the lineage on
+   * screen was compiled -- drives the "refresh needed" banner. */
+  envStale: boolean;
+  /** The active environment set's name (`"base"` when only flat variables
+   * exist), or `null` when no environment is configured. */
+  activeEnv: string | null;
 }
 
 /** Renders the Preview tab's body: a loading indicator while a `zhao
@@ -198,6 +204,7 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   @media (prefers-reduced-motion: reduce) { .column-edge.highlighted { animation: none; } }
   .column-row.traced { fill: rgba(213, 94, 0, 0.28); stroke: #d55e00; stroke-width: 1.5; }
   .column-row.origin { fill: rgba(213, 94, 0, 0.55); stroke: #d55e00; stroke-width: 2.5; }
+  .active-env { font-size: 11px; opacity: 0.75; margin-bottom: 6px; }
   #info { margin-top: 8px; font-size: 12px; white-space: pre-wrap; }
   button { cursor: pointer; }
   #contextMenu { position: fixed; z-index: 10; display: none; flex-direction: column; background: var(--vscode-menu-background, var(--vscode-editorWidget-background)); border: 1px solid var(--vscode-panel-border); box-shadow: 0 2px 8px rgba(0,0,0,0.2); min-width: 160px; }
@@ -214,6 +221,8 @@ export function renderLineageHtml(state: LineageWebviewState): string {
 </head>
 <body>
   ${state.missingExecutable ? `<div class="banner">zhao-cli was not found on PATH. <button id="download">Download zhao-cli</button></div>` : ""}
+  ${state.envStale ? `<div class="banner">Environment variables changed since this lineage was compiled. <button id="envRefresh">Refresh Lineage</button></div>` : ""}
+  ${state.activeEnv ? `<div class="active-env" title="The environment variables passed to dbt">Environment: <strong>${escapeHtml(state.activeEnv)}</strong></div>` : ""}
   <div class="tab-strip">
     <button id="tabLineage" class="${state.activeTab === "lineage" ? "active" : ""}">Lineage</button>
     <button id="tabPreview" class="${state.activeTab === "preview" ? "active" : ""}">Preview</button>
@@ -263,6 +272,7 @@ export function renderLineageHtml(state: LineageWebviewState): string {
   const columnLevel = ${JSON.stringify(state.columnLevel)};
 
   document.getElementById("refresh")?.addEventListener("click", () => vscode.postMessage({ type: "refresh" }));
+  document.getElementById("envRefresh")?.addEventListener("click", () => vscode.postMessage({ type: "refresh" }));
   document.getElementById("popOut")?.addEventListener("click", () => vscode.postMessage({ type: "popOut" }));
   document.getElementById("download")?.addEventListener("click", () => vscode.postMessage({ type: "downloadCli" }));
   document.getElementById("copyCommand")?.addEventListener("click", () => vscode.postMessage({ type: "copyCommand" }));

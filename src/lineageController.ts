@@ -12,6 +12,7 @@ import { existsSync, mkdirSync, statSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, isAbsolute, join } from "node:path";
 import * as vscode from "vscode";
+import { EnvController } from "./envController.js";
 import { resolveCompiledPath, type RawDbtManifest } from "./engine/compiledCode.js";
 import { isCompiledCodeStale } from "./engine/compiledCodeStaleness.js";
 import { buildRenderableGraph } from "./engine/graphEngine.js";
@@ -93,13 +94,25 @@ export class LineageController implements vscode.Disposable {
   private readonly changeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.changeEmitter.event;
 
+  /** The environment variables every spawned `zhao`/dbt process gets --
+   * see `./envController.ts`. A change in any source marks the current
+   * lineage stale rather than recompiling it. */
+  readonly env: EnvController;
+
   constructor(private readonly context: vscode.ExtensionContext) {
     const config = vscode.workspace.getConfiguration("zhao");
     this.depth = config.get<number>("depth", 3);
     this.direction = config.get<Direction>("direction", "both");
+    this.env = new EnvController(
+      context,
+      () => this.activeProjectDir,
+      () => this.fullLineage !== null,
+    );
+    this.env.onDidChange(() => this.changeEmitter.fire());
   }
 
   dispose(): void {
+    this.env.dispose();
     this.changeEmitter.dispose();
   }
 
@@ -322,13 +335,16 @@ export class LineageController implements vscode.Disposable {
         compile: actuallyCompile,
         profileTarget: this.activeTarget ?? undefined,
       });
-      const lineageResult = await runZhao(executable, lineageArgs);
+      const lineageResult = await runZhao(executable, lineageArgs, undefined, this.env.spawnEnv());
       if (lineageResult.code !== 0) {
         this.error = lineageResult.stderr.trim() || "zhao lineage failed.";
         this.changeEmitter.fire();
         return;
       }
       this.lastTargetPathDir = targetPathDir;
+      if (actuallyCompile) {
+        this.env.clearStale();
+      }
 
       const fullLineagePath = join(projectDir, "target", "zhao", "full_lineage.json");
       const raw = readZhaoJson<RawFullLineageJson>(fullLineagePath);
@@ -343,7 +359,7 @@ export class LineageController implements vscode.Disposable {
           targetPathDir,
           profileTarget: this.activeTarget ?? undefined,
         });
-        const diffResult = await runZhao(executable, diffArgs);
+        const diffResult = await runZhao(executable, diffArgs, undefined, this.env.spawnEnv());
         try {
           const rawMetadata = JSON.parse(diffResult.stdout) as RawRunMetadataJson;
           const parsed = parseRunMetadataJson(rawMetadata);
@@ -428,7 +444,7 @@ export class LineageController implements vscode.Disposable {
         target: node.name,
         profileTarget: this.activeTarget ?? undefined,
       });
-      const zhaoResult = await runZhao(executable, args, abortController.signal);
+      const zhaoResult = await runZhao(executable, args, abortController.signal, this.env.spawnEnv());
       result = parsePreviewResult(zhaoResult.code, zhaoResult.stdout, zhaoResult.stderr);
     } catch (err) {
       // Includes an abort (a newer previewNode call superseded this
@@ -575,6 +591,8 @@ export class LineageController implements vscode.Disposable {
       previewFocus: this.previewFocus,
       previewLoading: this.previewLoading,
       previewResult: this.previewResult,
+      envStale: this.env.isStale,
+      activeEnv: this.env.activeLabel,
     };
   }
 
@@ -613,6 +631,7 @@ export class LineageController implements vscode.Disposable {
       availableTargets,
       activeTarget: this.activeTarget,
       needsZhaoYmlSetup,
+      env: await this.env.getSidebarState(),
     };
   }
 
@@ -629,7 +648,7 @@ export class LineageController implements vscode.Disposable {
         .then((bytes) => Buffer.from(bytes).toString("utf8"));
       const profileName = readDbtProjectProfileName(dbtProjectYaml);
       const profilesPath = profileName
-        ? findProfilesYmlPath(projectDir, process.env, homedir())
+        ? findProfilesYmlPath(projectDir, this.env.effectiveProcessEnv(), homedir())
         : null;
       if (!profileName || !profilesPath) {
         return [];
